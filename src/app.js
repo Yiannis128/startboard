@@ -4,12 +4,23 @@ document.addEventListener('DOMContentLoaded', async () => {
   const sidebar = document.getElementById('sidebar');
   const overlay = document.getElementById('overlay');
   const colorModeRadios = document.querySelectorAll('input[name="colorMode"]');
-  const timeToggle = document.getElementById('timeToggle');
-  const timeDisplay = document.getElementById('timeDisplay');
   const shortcutsToggle = document.getElementById('shortcutsToggle');
+  const settingsContainer = document.getElementById('settingsContainer');
+
+  // Register widget configs before loading
+  welcomeTextWidget.registerConfig(config);
+  timeWidget.registerConfig(config);
 
   // Load config
   await config.load();
+
+  // Create widget settings UI
+  welcomeTextWidget.createSettingsUI(settingsContainer);
+  timeWidget.createSettingsUI(settingsContainer);
+
+  // Initialize widgets
+  await welcomeTextWidget.init(config);
+  await timeWidget.init(config);
 
   // Sidebar controls
   function openSidebar() {
@@ -60,48 +71,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
     if (config.displayMode === 'system') {
       applyTheme('system');
-    }
-  });
-
-  // Time management
-  let timeInterval = null;
-
-  function updateTime() {
-    const now = new Date();
-    const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
-    const seconds = String(now.getSeconds()).padStart(2, '0');
-    timeDisplay.textContent = `${hours}:${minutes}:${seconds}`;
-  }
-
-  function showTime() {
-    timeDisplay.classList.remove('hidden');
-    updateTime();
-    timeInterval = setInterval(updateTime, 1000);
-  }
-
-  function hideTime() {
-    timeDisplay.classList.add('hidden');
-    if (timeInterval) {
-      clearInterval(timeInterval);
-      timeInterval = null;
-    }
-  }
-
-  // Initialize time display
-  timeToggle.checked = config.showTime;
-  if (config.showTime) {
-    showTime();
-  }
-
-  // Listen for time toggle changes
-  timeToggle.addEventListener('change', async (e) => {
-    const isChecked = e.target.checked;
-    await config.setShowTime(isChecked);
-    if (isChecked) {
-      showTime();
-    } else {
-      hideTime();
     }
   });
 

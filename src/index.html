@@ -8,7 +8,7 @@
 </head>
 <body class="min-h-screen flex flex-col items-center justify-center bg-gray-100 p-8">
   <div class="text-center mb-8">
-    <h1 class="text-4xl font-bold text-gray-800">Welcome</h1>
+    <h1 id="welcomeText" class="text-4xl font-bold text-gray-800">Welcome</h1>
     <div id="timeDisplay" class="text-2xl mt-4 text-gray-600 hidden"></div>
   </div>
 
@@ -98,15 +98,6 @@
         </div>
       </div>
 
-      <!-- Time Section -->
-      <div class="mb-6">
-        <h3 class="text-sm font-semibold mb-3">Time</h3>
-        <label class="flex items-center cursor-pointer">
-          <input type="checkbox" id="timeToggle" class="toggle toggle-primary" />
-          <span class="ml-3">Show current time</span>
-        </label>
-      </div>
-
       <!-- Shortcuts Section -->
       <div class="mb-6">
         <h3 class="text-sm font-semibold mb-3">Shortcuts</h3>
@@ -115,13 +106,19 @@
           <span class="ml-3">Show shortcuts</span>
         </label>
       </div>
+
+      <div id="settingsContainer"></div>
     </div>
   </div>
+
 
   <!-- Overlay (transparent, for click-to-close) -->
   <div id="overlay" class="fixed inset-0 hidden z-40"></div>
 
   <script src="config.js"></script>
+  <script src="widgets/StartWidget.js"></script>
+  <script src="widgets/WelcomeTextWidget.js"></script>
+  <script src="widgets/TimeWidget.js"></script>
   <script src="shortcuts.js"></script>
   <script src="app.js"></script>
 </body>

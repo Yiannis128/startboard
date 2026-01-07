@@ -49,14 +49,6 @@ class Config {
     await this._set('displayMode', value);
   }
 
-  get showTime() {
-    return this._get('showTime', false);
-  }
-
-  async setShowTime(value) {
-    await this._set('showTime', Boolean(value));
-  }
-
   get showShortcuts() {
     return this._get('showShortcuts', true);
   }
