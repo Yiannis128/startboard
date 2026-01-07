@@ -6,8 +6,5 @@
   "chrome_url_overrides": {
     "newtab": "src/index.html"
   },
-  "permissions": ["storage", "sidePanel"],
-  "side_panel": {
-    "default_path": "src/sidepanel.html"
-  }
+  "permissions": ["storage"]
 }

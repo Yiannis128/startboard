@@ -120,7 +120,7 @@ class ThemeWidget extends StartWidget {
 
     section.innerHTML = `
       <div class="collapse collapse-arrow bg-base-200 mb-3">
-        <input type="checkbox" name="primaryColorCollapse" />
+        <input type="radio" name="colorAccordion" />
         <div class="collapse-title text-sm font-semibold">
           Primary Color
         </div>
@@ -131,7 +131,7 @@ class ThemeWidget extends StartWidget {
         </div>
       </div>
       <div class="collapse collapse-arrow bg-base-200 mb-3">
-        <input type="checkbox" name="secondaryColorCollapse" />
+        <input type="radio" name="colorAccordion" />
         <div class="collapse-title text-sm font-semibold">
           Secondary Color
         </div>
@@ -142,7 +142,7 @@ class ThemeWidget extends StartWidget {
         </div>
       </div>
       <div class="collapse collapse-arrow bg-base-200">
-        <input type="checkbox" name="accentColorCollapse" />
+        <input type="radio" name="colorAccordion" />
         <div class="collapse-title text-sm font-semibold">
           Accent Color
         </div>
@@ -159,16 +159,14 @@ class ThemeWidget extends StartWidget {
   }
 
   async init(config) {
+    const primaryColorRadios = document.querySelectorAll('input[name="primaryColor"]');
+    const secondaryColorRadios = document.querySelectorAll('input[name="secondaryColor"]');
+    const accentColorRadios = document.querySelectorAll('input[name="accentColor"]');
+
     // Apply the saved primary, secondary, and accent colors
     this.applyPrimaryColor(config.primaryColor);
     this.applySecondaryColor(config.secondaryColor);
     this.applyAccentColor(config.accentColor);
-  }
-
-  initSettings(config) {
-    const primaryColorRadios = document.querySelectorAll('input[name="primaryColor"]');
-    const secondaryColorRadios = document.querySelectorAll('input[name="secondaryColor"]');
-    const accentColorRadios = document.querySelectorAll('input[name="accentColor"]');
 
     // Initialize selected primary color
     primaryColorRadios.forEach(radio => {
@@ -197,9 +195,6 @@ class ThemeWidget extends StartWidget {
         const newColor = e.target.value;
         await config.setPrimaryColor(newColor);
         this.applyPrimaryColor(newColor);
-
-        // Notify the main page to update its color
-        chrome.runtime.sendMessage({ type: 'primaryColorChanged', color: newColor });
       });
     });
 
@@ -209,9 +204,6 @@ class ThemeWidget extends StartWidget {
         const newColor = e.target.value;
         await config.setSecondaryColor(newColor);
         this.applySecondaryColor(newColor);
-
-        // Notify the main page to update its color
-        chrome.runtime.sendMessage({ type: 'secondaryColorChanged', color: newColor });
       });
     });
 
@@ -221,9 +213,6 @@ class ThemeWidget extends StartWidget {
         const newColor = e.target.value;
         await config.setAccentColor(newColor);
         this.applyAccentColor(newColor);
-
-        // Notify the main page to update its color
-        chrome.runtime.sendMessage({ type: 'accentColorChanged', color: newColor });
       });
     });
   }

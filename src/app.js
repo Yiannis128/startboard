@@ -1,4 +1,11 @@
 document.addEventListener('DOMContentLoaded', async () => {
+  const openSidebarBtn = document.getElementById('openSidebar');
+  const closeSidebarBtn = document.getElementById('closeSidebar');
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('overlay');
+  const colorModeRadios = document.querySelectorAll('input[name="colorMode"]');
+  const settingsContainer = document.getElementById('settingsContainer');
+
   // Register widget configs before loading
   welcomeTextWidget.registerConfig(config);
   timeWidget.registerConfig(config);
@@ -9,6 +16,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Load config
   await config.load();
 
+  // Create widget settings UI
+  welcomeTextWidget.createSettingsUI(settingsContainer);
+  timeWidget.createSettingsUI(settingsContainer);
+  shortcutsWidget.createSettingsUI(settingsContainer);
+  themeWidget.createSettingsUI(settingsContainer);
+  backdropWidget.createSettingsUI(settingsContainer);
+
   // Initialize widgets
   await welcomeTextWidget.init(config);
   await timeWidget.init(config);
@@ -16,18 +30,20 @@ document.addEventListener('DOMContentLoaded', async () => {
   await themeWidget.init(config);
   await backdropWidget.init(config);
 
-  // Settings button - opens Chrome side panel
-  const openSettingsBtn = document.getElementById('openSettings');
-  openSettingsBtn.addEventListener('click', async () => {
-    try {
-      // Get the current window
-      const currentWindow = await chrome.windows.getCurrent();
-      // Open the side panel for this window
-      await chrome.sidePanel.open({ windowId: currentWindow.id });
-    } catch (error) {
-      console.error('Failed to open side panel:', error);
-    }
-  });
+  // Sidebar controls
+  function openSidebar() {
+    sidebar.classList.remove('translate-x-full');
+    overlay.classList.remove('hidden');
+  }
+
+  function closeSidebar() {
+    sidebar.classList.add('translate-x-full');
+    overlay.classList.add('hidden');
+  }
+
+  openSidebarBtn.addEventListener('click', openSidebar);
+  closeSidebarBtn.addEventListener('click', closeSidebar);
+  overlay.addEventListener('click', closeSidebar);
 
   // Theme management
   function getSystemTheme() {
@@ -55,149 +71,26 @@ document.addEventListener('DOMContentLoaded', async () => {
   const currentMode = config.displayMode;
   applyTheme(currentMode);
 
-  // Listen for theme changes from the side panel
-  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.type === 'themeChanged') {
-      applyTheme(message.mode);
+  // Set the correct radio button
+  colorModeRadios.forEach(radio => {
+    if (radio.value === currentMode) {
+      radio.checked = true;
     }
-    if (message.type === 'primaryColorChanged') {
-      themeWidget.applyPrimaryColor(message.color);
-    }
-    if (message.type === 'secondaryColorChanged') {
-      themeWidget.applySecondaryColor(message.color);
-    }
-    if (message.type === 'accentColorChanged') {
-      themeWidget.applyAccentColor(message.color);
-    }
-    if (message.type === 'backdropColorChanged') {
-      backdropWidget.applyBackgroundColor(message.color);
-    }
-    if (message.type === 'backdropModeChanged') {
-      if (message.mode === 'solid') {
-        backdropWidget.applyBackgroundColor(config.backdropColor);
-      } else if (message.mode === 'gradient') {
-        backdropWidget.applyGradient(config.backdropGradient, config.backdropAngle);
-      } else if (message.mode === 'image') {
-        backdropWidget.applyImage(config.backdropImage, config.backdropImageRepeat);
-      } else {
-        // Clear backdrop
-        document.body.style.backgroundColor = '';
-        document.body.style.backgroundImage = '';
-      }
-    }
-    if (message.type === 'backdropGradientChanged') {
-      backdropWidget.applyGradient(message.gradient, message.angle);
-    }
-    if (message.type === 'backdropAngleChanged') {
-      backdropWidget.applyGradient(message.gradient, message.angle);
-    }
-    if (message.type === 'backdropImageChanged') {
-      backdropWidget.applyImage(message.image, message.repeat);
-    }
+  });
+
+  // Listen for color mode changes
+  colorModeRadios.forEach(radio => {
+    radio.addEventListener('change', async (e) => {
+      const newMode = e.target.value;
+      await config.setDisplayMode(newMode);
+      applyTheme(newMode);
+    });
   });
 
   // Listen for system theme changes (when mode is 'system')
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
     if (config.displayMode === 'system') {
       applyTheme('system');
-    }
-  });
-
-  // Listen for storage changes from the side panel
-  chrome.storage.onChanged.addListener(async (changes, areaName) => {
-    if (areaName === 'sync') {
-      // Reload config
-      await config.load();
-
-      // Update widgets based on changes
-      for (const [key, { oldValue, newValue }] of Object.entries(changes)) {
-        // Handle theme changes
-        if (key === 'displayMode') {
-          applyTheme(newValue);
-        }
-
-        // Handle welcome text changes
-        if (key === 'welcomeText.show') {
-          if (newValue) {
-            welcomeTextWidget.show();
-          } else {
-            welcomeTextWidget.hide();
-          }
-        }
-        if (key === 'welcomeText.text') {
-          const textElement = document.getElementById('welcomeText');
-          if (textElement) {
-            textElement.textContent = newValue;
-          }
-        }
-
-        // Handle time widget changes
-        if (key === 'time.show') {
-          if (newValue) {
-            timeWidget.show();
-          } else {
-            timeWidget.hide();
-          }
-        }
-
-        // Handle shortcuts changes
-        if (key === 'shortcuts.show') {
-          if (newValue) {
-            shortcutsWidget.show();
-          } else {
-            shortcutsWidget.hide();
-          }
-        }
-        if (key === 'shortcuts') {
-          // Re-render shortcuts when they change
-          shortcutsWidget.manager.render();
-        }
-
-        // Handle theme color changes
-        if (key === 'theme.primaryColor') {
-          themeWidget.applyPrimaryColor(newValue);
-        }
-        if (key === 'theme.secondaryColor') {
-          themeWidget.applySecondaryColor(newValue);
-        }
-        if (key === 'theme.accentColor') {
-          themeWidget.applyAccentColor(newValue);
-        }
-
-        // Handle backdrop changes
-        if (key === 'backdrop.mode') {
-          if (newValue === 'solid') {
-            backdropWidget.applyBackgroundColor(config.backdropColor);
-          } else if (newValue === 'gradient') {
-            backdropWidget.applyGradient(config.backdropGradient, config.backdropAngle);
-          } else if (newValue === 'image') {
-            backdropWidget.applyImage(config.backdropImage, config.backdropImageRepeat);
-          } else {
-            document.body.style.backgroundColor = '';
-            document.body.style.backgroundImage = '';
-          }
-        }
-        if (key === 'backdrop.color') {
-          if (config.backdropMode === 'solid') {
-            backdropWidget.applyBackgroundColor(newValue);
-          }
-        }
-        if (key === 'backdrop.gradient') {
-          if (config.backdropMode === 'gradient') {
-            backdropWidget.applyGradient(newValue, config.backdropAngle);
-          }
-        }
-        if (key === 'backdrop.angle') {
-          if (config.backdropMode === 'gradient') {
-            backdropWidget.applyGradient(config.backdropGradient, newValue);
-          }
-        }
-        if (key === 'backdrop.image' || key === 'backdrop.imageRepeat') {
-          if (config.backdropMode === 'image') {
-            backdropWidget.applyImage(config.backdropImage, config.backdropImageRepeat);
-          }
-        }
-      }
     }
   });
 });

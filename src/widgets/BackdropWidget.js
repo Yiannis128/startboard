@@ -263,6 +263,16 @@ class BackdropWidget extends StartWidget {
   }
 
   async init(config) {
+    const modeRadios = document.querySelectorAll('input[name="backdropMode"]');
+    const colorRadios = document.querySelectorAll('input[name="backdropColor"]');
+    const gradientRadios = document.querySelectorAll('input[name="backdropGradient"]');
+    const imageRadios = document.querySelectorAll('input[name="backdropImage"]');
+    const colorSection = document.getElementById('backdropColorSection');
+    const gradientSection = document.getElementById('backdropGradientSection');
+    const imageSection = document.getElementById('backdropImageSection');
+    const angleSlider = document.getElementById('backdropAngleSlider');
+    const angleValue = document.getElementById('backdropAngleValue');
+
     // Widget initialization on main page
     this.currentMode = config.backdropMode;
 
@@ -274,6 +284,125 @@ class BackdropWidget extends StartWidget {
     } else if (config.backdropMode === 'image') {
       this.applyImage(config.backdropImage, config.backdropImageRepeat);
     }
+
+    // Function to show/hide sections based on mode
+    const updateSectionVisibility = (mode) => {
+      if (mode === 'solid') {
+        colorSection.classList.remove('hidden');
+        gradientSection.classList.add('hidden');
+        imageSection.classList.add('hidden');
+      } else if (mode === 'gradient') {
+        colorSection.classList.add('hidden');
+        gradientSection.classList.remove('hidden');
+        imageSection.classList.add('hidden');
+      } else if (mode === 'image') {
+        colorSection.classList.add('hidden');
+        gradientSection.classList.add('hidden');
+        imageSection.classList.remove('hidden');
+      } else {
+        colorSection.classList.add('hidden');
+        gradientSection.classList.add('hidden');
+        imageSection.classList.add('hidden');
+      }
+    };
+
+    // Initialize radio button state
+    modeRadios.forEach(radio => {
+      if (radio.value === config.backdropMode) {
+        radio.checked = true;
+      }
+    });
+
+    // Initialize section visibility
+    updateSectionVisibility(config.backdropMode);
+
+    // Initialize selected background color
+    colorRadios.forEach(radio => {
+      if (radio.value === config.backdropColor) {
+        radio.checked = true;
+      }
+    });
+
+    // Initialize selected gradient
+    gradientRadios.forEach(radio => {
+      if (radio.value === config.backdropGradient) {
+        radio.checked = true;
+      }
+    });
+
+    // Initialize selected image
+    imageRadios.forEach(radio => {
+      if (radio.value === config.backdropImage) {
+        radio.checked = true;
+      }
+    });
+
+    // Initialize angle slider
+    angleSlider.value = config.backdropAngle;
+    angleValue.textContent = config.backdropAngle;
+
+    // Listen for mode changes
+    modeRadios.forEach(radio => {
+      radio.addEventListener('change', async (e) => {
+        const newMode = e.target.value;
+        await config.setBackdropMode(newMode);
+        updateSectionVisibility(newMode);
+
+        // Apply the backdrop immediately
+        if (newMode === 'solid') {
+          this.applyBackgroundColor(config.backdropColor);
+        } else if (newMode === 'gradient') {
+          this.applyGradient(config.backdropGradient, config.backdropAngle);
+        } else if (newMode === 'image') {
+          this.applyImage(config.backdropImage, config.backdropImageRepeat);
+        } else {
+          // Clear backdrop
+          document.body.style.backgroundColor = '';
+          document.body.style.backgroundImage = '';
+        }
+      });
+    });
+
+    // Listen for color changes
+    colorRadios.forEach(radio => {
+      radio.addEventListener('change', async (e) => {
+        const newColor = e.target.value;
+        await config.setBackdropColor(newColor);
+        this.applyBackgroundColor(newColor);
+      });
+    });
+
+    // Listen for gradient changes
+    gradientRadios.forEach(radio => {
+      radio.addEventListener('change', async (e) => {
+        const newGradient = e.target.value;
+        await config.setBackdropGradient(newGradient);
+        this.applyGradient(newGradient, config.backdropAngle);
+      });
+    });
+
+    // Listen for angle changes
+    angleSlider.addEventListener('input', (e) => {
+      const newAngle = e.target.value;
+      angleValue.textContent = newAngle;
+    });
+
+    angleSlider.addEventListener('change', async (e) => {
+      const newAngle = e.target.value;
+      await config.setBackdropAngle(newAngle);
+      this.applyGradient(config.backdropGradient, newAngle);
+    });
+
+    // Listen for image changes
+    imageRadios.forEach(radio => {
+      radio.addEventListener('change', async (e) => {
+        const newImage = e.target.value;
+        const isRepeat = e.target.dataset.repeat === 'true';
+        await config.setBackdropImage(newImage);
+        await config.setBackdropImageRepeat(isRepeat);
+        this.applyImage(newImage, isRepeat);
+      });
+    });
   }
 
   applyBackgroundColor(colorName) {
@@ -351,146 +480,6 @@ class BackdropWidget extends StartWidget {
     }
   }
 
-  initSettings(config) {
-    const modeRadios = document.querySelectorAll('input[name="backdropMode"]');
-    const colorRadios = document.querySelectorAll('input[name="backdropColor"]');
-    const gradientRadios = document.querySelectorAll('input[name="backdropGradient"]');
-    const imageRadios = document.querySelectorAll('input[name="backdropImage"]');
-    const colorSection = document.getElementById('backdropColorSection');
-    const gradientSection = document.getElementById('backdropGradientSection');
-    const imageSection = document.getElementById('backdropImageSection');
-    const angleSlider = document.getElementById('backdropAngleSlider');
-    const angleValue = document.getElementById('backdropAngleValue');
-
-    // Function to show/hide sections based on mode
-    const updateSectionVisibility = (mode) => {
-      if (mode === 'solid') {
-        colorSection.classList.remove('hidden');
-        gradientSection.classList.add('hidden');
-        imageSection.classList.add('hidden');
-      } else if (mode === 'gradient') {
-        colorSection.classList.add('hidden');
-        gradientSection.classList.remove('hidden');
-        imageSection.classList.add('hidden');
-      } else if (mode === 'image') {
-        colorSection.classList.add('hidden');
-        gradientSection.classList.add('hidden');
-        imageSection.classList.remove('hidden');
-      } else {
-        colorSection.classList.add('hidden');
-        gradientSection.classList.add('hidden');
-        imageSection.classList.add('hidden');
-      }
-    };
-
-    // Initialize radio button state
-    modeRadios.forEach(radio => {
-      if (radio.value === config.backdropMode) {
-        radio.checked = true;
-      }
-    });
-
-    // Initialize section visibility
-    updateSectionVisibility(config.backdropMode);
-
-    // Initialize selected background color
-    colorRadios.forEach(radio => {
-      if (radio.value === config.backdropColor) {
-        radio.checked = true;
-      }
-    });
-
-    // Initialize selected gradient
-    gradientRadios.forEach(radio => {
-      if (radio.value === config.backdropGradient) {
-        radio.checked = true;
-      }
-    });
-
-    // Initialize selected image
-    imageRadios.forEach(radio => {
-      if (radio.value === config.backdropImage) {
-        radio.checked = true;
-      }
-    });
-
-    // Initialize angle slider
-    angleSlider.value = config.backdropAngle;
-    angleValue.textContent = config.backdropAngle;
-
-    // Listen for mode changes
-    modeRadios.forEach(radio => {
-      radio.addEventListener('change', async (e) => {
-        const newMode = e.target.value;
-        await config.setBackdropMode(newMode);
-        updateSectionVisibility(newMode);
-
-        // Notify main page about mode change
-        chrome.runtime.sendMessage({ type: 'backdropModeChanged', mode: newMode });
-      });
-    });
-
-    // Listen for color changes
-    colorRadios.forEach(radio => {
-      radio.addEventListener('change', async (e) => {
-        const newColor = e.target.value;
-        await config.setBackdropColor(newColor);
-
-        // Notify the main page to update its background
-        chrome.runtime.sendMessage({ type: 'backdropColorChanged', color: newColor });
-      });
-    });
-
-    // Listen for gradient changes
-    gradientRadios.forEach(radio => {
-      radio.addEventListener('change', async (e) => {
-        const newGradient = e.target.value;
-        await config.setBackdropGradient(newGradient);
-
-        // Notify the main page to update its background
-        chrome.runtime.sendMessage({
-          type: 'backdropGradientChanged',
-          gradient: newGradient,
-          angle: config.backdropAngle
-        });
-      });
-    });
-
-    // Listen for angle changes
-    angleSlider.addEventListener('input', (e) => {
-      const newAngle = e.target.value;
-      angleValue.textContent = newAngle;
-    });
-
-    angleSlider.addEventListener('change', async (e) => {
-      const newAngle = e.target.value;
-      await config.setBackdropAngle(newAngle);
-
-      // Notify the main page to update gradient angle
-      chrome.runtime.sendMessage({
-        type: 'backdropAngleChanged',
-        gradient: config.backdropGradient,
-        angle: newAngle
-      });
-    });
-
-    // Listen for image changes
-    imageRadios.forEach(radio => {
-      radio.addEventListener('change', async (e) => {
-        const newImage = e.target.value;
-        const isRepeat = e.target.dataset.repeat === 'true';
-        await config.setBackdropImage(newImage);
-        await config.setBackdropImageRepeat(isRepeat);
-
-        // Notify the main page to update background image
-        chrome.runtime.sendMessage({
-          type: 'backdropImageChanged',
-          image: newImage,
-          repeat: isRepeat
-        });
-      });
-    });
-  }
 
   show() {
     // Skeleton - implement when adding actual backdrop functionality

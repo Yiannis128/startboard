@@ -278,9 +278,13 @@ class ShortcutsWidget extends StartWidget {
   async init(config) {
     const shortcutsContainer = document.getElementById('shortcutsContainer');
     const shortcutsGrid = document.getElementById('shortcutsGrid');
+    const toggle = document.getElementById('shortcutsToggle');
 
     // Initialize shortcuts manager
     this.manager.init(shortcutsContainer, shortcutsGrid);
+
+    // Initialize toggle state
+    toggle.checked = config.showShortcuts;
 
     // Show/hide based on config
     if (config.showShortcuts) {
@@ -288,18 +292,16 @@ class ShortcutsWidget extends StartWidget {
     } else {
       this.hide();
     }
-  }
-
-  initSettings(config) {
-    const toggle = document.getElementById('shortcutsToggle');
-
-    // Initialize toggle state
-    toggle.checked = config.showShortcuts;
 
     // Listen for toggle changes
     toggle.addEventListener('change', async (e) => {
       const isChecked = e.target.checked;
       await config.setShowShortcuts(isChecked);
+      if (isChecked) {
+        this.show();
+      } else {
+        this.hide();
+      }
     });
   }
 
