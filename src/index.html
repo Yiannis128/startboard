@@ -92,6 +92,26 @@
       </div>
 
       <div id="settingsContainer"></div>
+
+      <!-- Export/Import Section -->
+      <div class="mb-6 mt-8 pt-6 border-t border-base-300">
+        <h3 class="text-sm font-semibold mb-3">Configuration</h3>
+        <div class="space-y-2">
+          <button id="exportConfig" class="btn btn-outline btn-primary w-full">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+            </svg>
+            Export Settings
+          </button>
+          <label class="btn btn-outline btn-secondary w-full">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
+            </svg>
+            Import Settings
+            <input type="file" id="importConfig" accept=".json" class="hidden" />
+          </label>
+        </div>
+      </div>
     </div>
   </div>
 

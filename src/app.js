@@ -93,4 +93,51 @@ document.addEventListener('DOMContentLoaded', async () => {
       applyTheme('system');
     }
   });
+
+  // Export/Import functionality
+  const exportBtn = document.getElementById('exportConfig');
+  const importInput = document.getElementById('importConfig');
+
+  exportBtn.addEventListener('click', () => {
+    // Serialize config data to JSON
+    const configData = JSON.stringify(config._data, null, 2);
+
+    // Create blob and download link
+    const blob = new Blob([configData], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `startboard-config-${new Date().toISOString().split('T')[0]}.json`;
+
+    // Trigger download
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  });
+
+  importInput.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    try {
+      // Read file content
+      const text = await file.text();
+      const importedData = JSON.parse(text);
+
+      // Update chrome storage with imported data
+      await new Promise((resolve) => {
+        chrome.storage.sync.set(importedData, resolve);
+      });
+
+      // Reload the page to apply new configuration
+      location.reload();
+    } catch (error) {
+      console.error('Failed to import config:', error);
+      alert('Failed to import configuration. Please check that the file is valid JSON.');
+    }
+
+    // Reset file input
+    e.target.value = '';
+  });
 });
