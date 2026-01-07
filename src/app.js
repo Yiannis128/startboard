@@ -3,6 +3,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   welcomeTextWidget.registerConfig(config);
   timeWidget.registerConfig(config);
   shortcutsWidget.registerConfig(config);
+  themeWidget.registerConfig(config);
 
   // Load config
   await config.load();
@@ -11,6 +12,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   await welcomeTextWidget.init(config);
   await timeWidget.init(config);
   await shortcutsWidget.init(config);
+  await themeWidget.init(config);
 
   // Settings button - opens Chrome side panel
   const openSettingsBtn = document.getElementById('openSettings');
@@ -33,6 +35,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   function applyTheme(mode) {
     const theme = mode === 'system' ? getSystemTheme() : mode;
     document.documentElement.setAttribute('data-theme', theme);
+    // Reapply colors when theme changes (colors differ for light/dark)
+    themeWidget.applyPrimaryColor(config.primaryColor);
+    themeWidget.applySecondaryColor(config.secondaryColor);
+    themeWidget.applyAccentColor(config.accentColor);
   }
 
   // Initialize theme
@@ -43,6 +49,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === 'themeChanged') {
       applyTheme(message.mode);
+    }
+    if (message.type === 'primaryColorChanged') {
+      themeWidget.applyPrimaryColor(message.color);
+    }
+    if (message.type === 'secondaryColorChanged') {
+      themeWidget.applySecondaryColor(message.color);
+    }
+    if (message.type === 'accentColorChanged') {
+      themeWidget.applyAccentColor(message.color);
     }
   });
 
@@ -101,6 +116,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (key === 'shortcuts') {
           // Re-render shortcuts when they change
           shortcutsWidget.manager.render();
+        }
+
+        // Handle theme color changes
+        if (key === 'theme.primaryColor') {
+          themeWidget.applyPrimaryColor(newValue);
+        }
+        if (key === 'theme.secondaryColor') {
+          themeWidget.applySecondaryColor(newValue);
+        }
+        if (key === 'theme.accentColor') {
+          themeWidget.applyAccentColor(newValue);
         }
       }
     }

@@ -11,6 +11,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   welcomeTextWidget.registerConfig(config);
   timeWidget.registerConfig(config);
   shortcutsWidget.registerConfig(config);
+  themeWidget.registerConfig(config);
 
   // Load config
   await config.load();
@@ -19,11 +20,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   welcomeTextWidget.createSettingsUI(settingsContainer);
   timeWidget.createSettingsUI(settingsContainer);
   shortcutsWidget.createSettingsUI(settingsContainer);
+  themeWidget.createSettingsUI(settingsContainer);
 
   // Initialize widget settings (sets up event listeners for the settings UI)
   welcomeTextWidget.initSettings(config);
   timeWidget.initSettings(config);
   shortcutsWidget.initSettings(config);
+  themeWidget.initSettings(config);
 
   // Theme management
   function getSystemTheme() {
@@ -33,6 +36,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   function applyTheme(mode) {
     const theme = mode === 'system' ? getSystemTheme() : mode;
     document.documentElement.setAttribute('data-theme', theme);
+    // Reapply colors when theme changes (colors differ for light/dark)
+    themeWidget.applyPrimaryColor(config.primaryColor);
+    themeWidget.applySecondaryColor(config.secondaryColor);
+    themeWidget.applyAccentColor(config.accentColor);
   }
 
   // Initialize theme
@@ -77,6 +84,46 @@ document.addEventListener('DOMContentLoaded', async () => {
           }
         });
         applyTheme(config.displayMode);
+
+        // Handle theme color changes
+        if (changes['theme.primaryColor']) {
+          const newColor = changes['theme.primaryColor'].newValue;
+          themeWidget.applyPrimaryColor(newColor);
+
+          // Update color radio buttons
+          const colorRadios = document.querySelectorAll('input[name="primaryColor"]');
+          colorRadios.forEach(radio => {
+            if (radio.value === newColor) {
+              radio.checked = true;
+            }
+          });
+        }
+
+        if (changes['theme.secondaryColor']) {
+          const newColor = changes['theme.secondaryColor'].newValue;
+          themeWidget.applySecondaryColor(newColor);
+
+          // Update color radio buttons
+          const colorRadios = document.querySelectorAll('input[name="secondaryColor"]');
+          colorRadios.forEach(radio => {
+            if (radio.value === newColor) {
+              radio.checked = true;
+            }
+          });
+        }
+
+        if (changes['theme.accentColor']) {
+          const newColor = changes['theme.accentColor'].newValue;
+          themeWidget.applyAccentColor(newColor);
+
+          // Update color radio buttons
+          const colorRadios = document.querySelectorAll('input[name="accentColor"]');
+          colorRadios.forEach(radio => {
+            if (radio.value === newColor) {
+              radio.checked = true;
+            }
+          });
+        }
       });
     }
   });
