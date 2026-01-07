@@ -82,8 +82,14 @@ class ThemeWidget extends StartWidget {
   }
 
   createSettingsUI(settingsContainer) {
+    // Append to the themeColorsContainer instead of settingsContainer
+    const themeColorsContainer = document.getElementById('themeColorsContainer');
+    if (!themeColorsContainer) {
+      console.error('themeColorsContainer not found');
+      return null;
+    }
+
     const section = document.createElement('div');
-    section.className = 'mb-6';
 
     // Generate primary color option buttons
     const primaryColorOptions = this.colorPairs.map(color => `
@@ -154,7 +160,7 @@ class ThemeWidget extends StartWidget {
       </div>
     `;
 
-    settingsContainer.appendChild(section);
+    themeColorsContainer.appendChild(section);
     return section;
   }
 
