@@ -8,8 +8,8 @@
 </head>
 <body class="min-h-screen flex flex-col items-center justify-center bg-gray-100 p-8">
   <div class="text-center mb-8">
-    <h1 id="welcomeText" class="text-4xl font-bold text-gray-800">Welcome</h1>
-    <div id="timeDisplay" class="text-2xl mt-4 text-gray-600 hidden"></div>
+    <h1 id="welcomeText" class="text-4xl font-bold text-gray-800 select-none">Welcome</h1>
+    <div id="timeDisplay" class="text-2xl mt-4 text-gray-600 select-none hidden"></div>
   </div>
 
   <!-- Shortcuts Grid -->
@@ -18,7 +18,7 @@
   </div>
 
   <!-- Shortcut Prototype (hidden) -->
-  <a id="shortcutPrototype" class="card bg-base-100 shadow-md hover:shadow-lg transition-shadow cursor-move p-2 flex flex-col items-center justify-center gap-1 text-center aspect-square w-24 h-24 hidden">
+  <a id="shortcutPrototype" class="card bg-base-100 shadow-md hover:shadow-lg transition-shadow cursor-move p-2 flex flex-col items-center justify-center gap-1 text-center aspect-square w-24 h-24 cursor-pointer hidden">
     <img class="shortcut-icon w-6 h-6" alt="">
     <span class="shortcut-title text-xs font-medium"></span>
   </a>
