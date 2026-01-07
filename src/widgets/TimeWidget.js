@@ -38,6 +38,7 @@ class TimeWidget extends StartWidget {
           <option value="Basic">Basic</option>
           <option value="Clock">Clock</option>
           <option value="Clock Labelled">Clock Labelled</option>
+          <option value="Clock Boxed">Clock Boxed</option>
         </select>
       </div>
     `;
@@ -92,6 +93,27 @@ class TimeWidget extends StartWidget {
     return `<span id="${id}" style="--value:0;" aria-live="polite" aria-label="0">00</span>`;
   }
 
+  createLabelledClock(columnClasses = 'flex flex-col') {
+    const units = [
+      { id: 'time-hours', label: 'hours' },
+      { id: 'time-minutes', label: 'min' },
+      { id: 'time-seconds', label: 'sec' }
+    ];
+
+    return `
+      <div class="grid auto-cols-max grid-flow-col gap-5 text-center">
+        ${units.map(({ id, label }) => `
+          <div class="${columnClasses}">
+            <span class="countdown font-mono text-5xl">
+              ${this.createCountdownSpan(id)}
+            </span>
+            ${label}
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
+
   buildTimeStructure(style) {
     if (style === 'Clock') {
       this.timeDisplay.innerHTML = `
@@ -104,24 +126,9 @@ class TimeWidget extends StartWidget {
         </span>
       `;
     } else if (style === 'Clock Labelled') {
-      const units = [
-        { id: 'time-hours', label: 'hours' },
-        { id: 'time-minutes', label: 'min' },
-        { id: 'time-seconds', label: 'sec' }
-      ];
-
-      this.timeDisplay.innerHTML = `
-        <div class="grid auto-cols-max grid-flow-col gap-5 text-center">
-          ${units.map(({ id, label }) => `
-            <div class="flex flex-col">
-              <span class="countdown font-mono text-5xl">
-                ${this.createCountdownSpan(id)}
-              </span>
-              ${label}
-            </div>
-          `).join('')}
-        </div>
-      `;
+      this.timeDisplay.innerHTML = this.createLabelledClock();
+    } else if (style === 'Clock Boxed') {
+      this.timeDisplay.innerHTML = this.createLabelledClock('bg-neutral rounded-box text-neutral-content flex flex-col p-2');
     } else {
       this.timeDisplay.textContent = '00:00:00';
     }
@@ -145,7 +152,7 @@ class TimeWidget extends StartWidget {
       this.buildTimeStructure(style);
     }
 
-    if (style === 'Clock' || style === 'Clock Labelled') {
+    if (style !== 'Basic') {
       this.updateTimeUnit('time-hours', now.getHours());
       this.updateTimeUnit('time-minutes', now.getMinutes());
       this.updateTimeUnit('time-seconds', now.getSeconds());
