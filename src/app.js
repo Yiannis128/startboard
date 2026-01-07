@@ -4,6 +4,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   timeWidget.registerConfig(config);
   shortcutsWidget.registerConfig(config);
   themeWidget.registerConfig(config);
+  backdropWidget.registerConfig(config);
 
   // Load config
   await config.load();
@@ -13,6 +14,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   await timeWidget.init(config);
   await shortcutsWidget.init(config);
   await themeWidget.init(config);
+  await backdropWidget.init(config);
 
   // Settings button - opens Chrome side panel
   const openSettingsBtn = document.getElementById('openSettings');
@@ -39,6 +41,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     themeWidget.applyPrimaryColor(config.primaryColor);
     themeWidget.applySecondaryColor(config.secondaryColor);
     themeWidget.applyAccentColor(config.accentColor);
+    // Reapply backdrop based on mode
+    if (config.backdropMode === 'solid') {
+      backdropWidget.applyBackgroundColor(config.backdropColor);
+    } else if (config.backdropMode === 'gradient') {
+      backdropWidget.applyGradient(config.backdropGradient, config.backdropAngle);
+    } else if (config.backdropMode === 'image') {
+      backdropWidget.applyImage(config.backdropImage, config.backdropImageRepeat);
+    }
   }
 
   // Initialize theme
@@ -58,6 +68,31 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     if (message.type === 'accentColorChanged') {
       themeWidget.applyAccentColor(message.color);
+    }
+    if (message.type === 'backdropColorChanged') {
+      backdropWidget.applyBackgroundColor(message.color);
+    }
+    if (message.type === 'backdropModeChanged') {
+      if (message.mode === 'solid') {
+        backdropWidget.applyBackgroundColor(config.backdropColor);
+      } else if (message.mode === 'gradient') {
+        backdropWidget.applyGradient(config.backdropGradient, config.backdropAngle);
+      } else if (message.mode === 'image') {
+        backdropWidget.applyImage(config.backdropImage, config.backdropImageRepeat);
+      } else {
+        // Clear backdrop
+        document.body.style.backgroundColor = '';
+        document.body.style.backgroundImage = '';
+      }
+    }
+    if (message.type === 'backdropGradientChanged') {
+      backdropWidget.applyGradient(message.gradient, message.angle);
+    }
+    if (message.type === 'backdropAngleChanged') {
+      backdropWidget.applyGradient(message.gradient, message.angle);
+    }
+    if (message.type === 'backdropImageChanged') {
+      backdropWidget.applyImage(message.image, message.repeat);
     }
   });
 
@@ -127,6 +162,40 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         if (key === 'theme.accentColor') {
           themeWidget.applyAccentColor(newValue);
+        }
+
+        // Handle backdrop changes
+        if (key === 'backdrop.mode') {
+          if (newValue === 'solid') {
+            backdropWidget.applyBackgroundColor(config.backdropColor);
+          } else if (newValue === 'gradient') {
+            backdropWidget.applyGradient(config.backdropGradient, config.backdropAngle);
+          } else if (newValue === 'image') {
+            backdropWidget.applyImage(config.backdropImage, config.backdropImageRepeat);
+          } else {
+            document.body.style.backgroundColor = '';
+            document.body.style.backgroundImage = '';
+          }
+        }
+        if (key === 'backdrop.color') {
+          if (config.backdropMode === 'solid') {
+            backdropWidget.applyBackgroundColor(newValue);
+          }
+        }
+        if (key === 'backdrop.gradient') {
+          if (config.backdropMode === 'gradient') {
+            backdropWidget.applyGradient(newValue, config.backdropAngle);
+          }
+        }
+        if (key === 'backdrop.angle') {
+          if (config.backdropMode === 'gradient') {
+            backdropWidget.applyGradient(config.backdropGradient, newValue);
+          }
+        }
+        if (key === 'backdrop.image' || key === 'backdrop.imageRepeat') {
+          if (config.backdropMode === 'image') {
+            backdropWidget.applyImage(config.backdropImage, config.backdropImageRepeat);
+          }
         }
       }
     }

@@ -12,6 +12,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   timeWidget.registerConfig(config);
   shortcutsWidget.registerConfig(config);
   themeWidget.registerConfig(config);
+  backdropWidget.registerConfig(config);
 
   // Load config
   await config.load();
@@ -21,12 +22,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   timeWidget.createSettingsUI(settingsContainer);
   shortcutsWidget.createSettingsUI(settingsContainer);
   themeWidget.createSettingsUI(settingsContainer);
+  backdropWidget.createSettingsUI(settingsContainer);
 
   // Initialize widget settings (sets up event listeners for the settings UI)
   welcomeTextWidget.initSettings(config);
   timeWidget.initSettings(config);
   shortcutsWidget.initSettings(config);
   themeWidget.initSettings(config);
+  backdropWidget.initSettings(config);
 
   // Theme management
   function getSystemTheme() {
@@ -120,6 +123,93 @@ document.addEventListener('DOMContentLoaded', async () => {
           const colorRadios = document.querySelectorAll('input[name="accentColor"]');
           colorRadios.forEach(radio => {
             if (radio.value === newColor) {
+              radio.checked = true;
+            }
+          });
+        }
+
+        // Handle backdrop mode changes
+        if (changes['backdrop.mode']) {
+          const newMode = changes['backdrop.mode'].newValue;
+          const modeRadios = document.querySelectorAll('input[name="backdropMode"]');
+          modeRadios.forEach(radio => {
+            if (radio.value === newMode) {
+              radio.checked = true;
+            }
+          });
+
+          // Update section visibility
+          const colorSection = document.getElementById('backdropColorSection');
+          const gradientSection = document.getElementById('backdropGradientSection');
+          const imageSection = document.getElementById('backdropImageSection');
+          if (newMode === 'solid') {
+            colorSection.classList.remove('hidden');
+            gradientSection.classList.add('hidden');
+            imageSection.classList.add('hidden');
+          } else if (newMode === 'gradient') {
+            colorSection.classList.add('hidden');
+            gradientSection.classList.remove('hidden');
+            imageSection.classList.add('hidden');
+          } else if (newMode === 'image') {
+            colorSection.classList.add('hidden');
+            gradientSection.classList.add('hidden');
+            imageSection.classList.remove('hidden');
+          } else {
+            colorSection.classList.add('hidden');
+            gradientSection.classList.add('hidden');
+            imageSection.classList.add('hidden');
+          }
+        }
+
+        // Handle backdrop color changes
+        if (changes['backdrop.color']) {
+          const newColor = changes['backdrop.color'].newValue;
+          // Don't apply backdrop to sidepanel - only update UI controls
+
+          // Update color radio buttons
+          const colorRadios = document.querySelectorAll('input[name="backdropColor"]');
+          colorRadios.forEach(radio => {
+            if (radio.value === newColor) {
+              radio.checked = true;
+            }
+          });
+        }
+
+        // Handle backdrop gradient changes
+        if (changes['backdrop.gradient']) {
+          const newGradient = changes['backdrop.gradient'].newValue;
+
+          // Update gradient radio buttons
+          const gradientRadios = document.querySelectorAll('input[name="backdropGradient"]');
+          gradientRadios.forEach(radio => {
+            if (radio.value === newGradient) {
+              radio.checked = true;
+            }
+          });
+        }
+
+        // Handle backdrop angle changes
+        if (changes['backdrop.angle']) {
+          const newAngle = changes['backdrop.angle'].newValue;
+          const angleSlider = document.getElementById('backdropAngleSlider');
+          const angleValue = document.getElementById('backdropAngleValue');
+
+          if (angleSlider) {
+            angleSlider.value = newAngle;
+          }
+          if (angleValue) {
+            angleValue.textContent = newAngle;
+          }
+        }
+
+        // Handle backdrop image changes
+        if (changes['backdrop.image']) {
+          const newImage = changes['backdrop.image'].newValue;
+
+          // Update image radio buttons
+          const imageRadios = document.querySelectorAll('input[name="backdropImage"]');
+          imageRadios.forEach(radio => {
+            if (radio.value === newImage) {
               radio.checked = true;
             }
           });
