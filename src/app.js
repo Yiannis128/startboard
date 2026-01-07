@@ -1,41 +1,29 @@
 document.addEventListener('DOMContentLoaded', async () => {
-  const openSidebarBtn = document.getElementById('openSidebar');
-  const closeSidebarBtn = document.getElementById('closeSidebar');
-  const sidebar = document.getElementById('sidebar');
-  const overlay = document.getElementById('overlay');
-  const colorModeRadios = document.querySelectorAll('input[name="colorMode"]');
-  const shortcutsToggle = document.getElementById('shortcutsToggle');
-  const settingsContainer = document.getElementById('settingsContainer');
-
   // Register widget configs before loading
   welcomeTextWidget.registerConfig(config);
   timeWidget.registerConfig(config);
+  shortcutsWidget.registerConfig(config);
 
   // Load config
   await config.load();
 
-  // Create widget settings UI
-  welcomeTextWidget.createSettingsUI(settingsContainer);
-  timeWidget.createSettingsUI(settingsContainer);
-
   // Initialize widgets
   await welcomeTextWidget.init(config);
   await timeWidget.init(config);
+  await shortcutsWidget.init(config);
 
-  // Sidebar controls
-  function openSidebar() {
-    sidebar.classList.remove('translate-x-full');
-    overlay.classList.remove('hidden');
-  }
-
-  function closeSidebar() {
-    sidebar.classList.add('translate-x-full');
-    overlay.classList.add('hidden');
-  }
-
-  openSidebarBtn.addEventListener('click', openSidebar);
-  closeSidebarBtn.addEventListener('click', closeSidebar);
-  overlay.addEventListener('click', closeSidebar);
+  // Settings button - opens Chrome side panel
+  const openSettingsBtn = document.getElementById('openSettings');
+  openSettingsBtn.addEventListener('click', async () => {
+    try {
+      // Get the current window
+      const currentWindow = await chrome.windows.getCurrent();
+      // Open the side panel for this window
+      await chrome.sidePanel.open({ windowId: currentWindow.id });
+    } catch (error) {
+      console.error('Failed to open side panel:', error);
+    }
+  });
 
   // Theme management
   function getSystemTheme() {
@@ -51,20 +39,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   const currentMode = config.displayMode;
   applyTheme(currentMode);
 
-  // Set the correct radio button
-  colorModeRadios.forEach(radio => {
-    if (radio.value === currentMode) {
-      radio.checked = true;
+  // Listen for theme changes from the side panel
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.type === 'themeChanged') {
+      applyTheme(message.mode);
     }
-  });
-
-  // Listen for color mode changes
-  colorModeRadios.forEach(radio => {
-    radio.addEventListener('change', async (e) => {
-      const newMode = e.target.value;
-      await config.setDisplayMode(newMode);
-      applyTheme(newMode);
-    });
   });
 
   // Listen for system theme changes (when mode is 'system')
@@ -74,30 +53,56 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
-  // Shortcuts management
-  const shortcutsContainer = document.getElementById('shortcutsContainer');
-  const shortcutsGrid = document.getElementById('shortcutsGrid');
+  // Listen for storage changes from the side panel
+  chrome.storage.onChanged.addListener(async (changes, areaName) => {
+    if (areaName === 'sync') {
+      // Reload config
+      await config.load();
 
-  // Initialize shortcuts manager
-  shortcutsManager.init(shortcutsContainer, shortcutsGrid);
+      // Update widgets based on changes
+      for (const [key, { oldValue, newValue }] of Object.entries(changes)) {
+        // Handle theme changes
+        if (key === 'displayMode') {
+          applyTheme(newValue);
+        }
 
-  // Initialize shortcuts toggle
-  shortcutsToggle.checked = config.showShortcuts;
+        // Handle welcome text changes
+        if (key === 'welcomeText.show') {
+          if (newValue) {
+            welcomeTextWidget.show();
+          } else {
+            welcomeTextWidget.hide();
+          }
+        }
+        if (key === 'welcomeText.text') {
+          const textElement = document.getElementById('welcomeText');
+          if (textElement) {
+            textElement.textContent = newValue;
+          }
+        }
 
-  // Show/hide shortcuts based on config
-  if (config.showShortcuts) {
-    shortcutsManager.show();
-  }
+        // Handle time widget changes
+        if (key === 'time.show') {
+          if (newValue) {
+            timeWidget.show();
+          } else {
+            timeWidget.hide();
+          }
+        }
 
-  // Listen for shortcuts toggle changes
-  shortcutsToggle.addEventListener('change', async (e) => {
-    const isChecked = e.target.checked;
-    await config.setShowShortcuts(isChecked);
-
-    if (isChecked) {
-      shortcutsManager.show();
-    } else {
-      shortcutsManager.hide();
+        // Handle shortcuts changes
+        if (key === 'shortcuts.show') {
+          if (newValue) {
+            shortcutsWidget.show();
+          } else {
+            shortcutsWidget.hide();
+          }
+        }
+        if (key === 'shortcuts') {
+          // Re-render shortcuts when they change
+          shortcutsWidget.manager.render();
+        }
+      }
     }
   });
 });

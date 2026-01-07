@@ -34,10 +34,6 @@ class TimeWidget extends StartWidget {
 
   async init(config) {
     this.timeDisplay = document.getElementById('timeDisplay');
-    const toggle = document.getElementById('timeToggle');
-
-    // Initialize toggle state
-    toggle.checked = config.showTime;
 
     // Show/hide based on config
     if (config.showTime) {
@@ -45,16 +41,18 @@ class TimeWidget extends StartWidget {
     } else {
       this.hide();
     }
+  }
+
+  initSettings(config) {
+    const toggle = document.getElementById('timeToggle');
+
+    // Initialize toggle state
+    toggle.checked = config.showTime;
 
     // Listen for toggle changes
     toggle.addEventListener('change', async (e) => {
       const isChecked = e.target.checked;
       await config.setShowTime(isChecked);
-      if (isChecked) {
-        this.show();
-      } else {
-        this.hide();
-      }
     });
   }
 

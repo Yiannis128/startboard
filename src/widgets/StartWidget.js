@@ -126,15 +126,30 @@ class StartWidget {
    * This method is called once during app initialization after config is loaded.
    *
    * Widgets should:
-   * - Set up DOM elements
-   * - Attach event listeners
+   * - Set up DOM elements for display
    * - Initialize any internal state
    * - Check if widget should be shown based on config
+   *
+   * Note: Do NOT access settings UI elements here - use initSettings() for that.
    *
    * @param {Config} config - The global config instance
    */
   async init(config) {
     throw new Error('Widget must implement init()');
+  }
+
+  /**
+   * Initialize the widget settings UI in the side panel.
+   * This method is called once during side panel initialization after config is loaded.
+   *
+   * Widgets should:
+   * - Set up event listeners for settings controls
+   * - Initialize control states based on config
+   *
+   * @param {Config} config - The global config instance
+   */
+  initSettings(config) {
+    throw new Error('Widget must implement initSettings()');
   }
 
   /**

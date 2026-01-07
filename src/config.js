@@ -49,14 +49,6 @@ class Config {
     await this._set('displayMode', value);
   }
 
-  get showShortcuts() {
-    return this._get('showShortcuts', true);
-  }
-
-  async setShowShortcuts(value) {
-    await this._set('showShortcuts', Boolean(value));
-  }
-
   get maxShortcuts() {
     return this._get('maxShortcuts', 16);
   }
