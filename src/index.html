@@ -65,12 +65,13 @@
 
   <!-- Sidebar -->
   <div id="sidebar" class="fixed top-0 right-0 h-full w-80 bg-base-100 shadow-2xl transform translate-x-full transition-transform duration-300 ease-in-out z-50 overflow-y-auto">
-    <div class="p-4">
-      <button id="closeSidebar" class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">
+    <div class="sticky top-0 bg-base-100 z-10 p-4 flex items-center justify-between border-b border-base-300">
+      <h2 class="text-xl font-bold">Settings</h2>
+      <button id="closeSidebar" class="btn btn-sm btn-circle btn-ghost">
         ✕
       </button>
-
-      <h2 class="text-xl font-bold mt-8 mb-4">Settings</h2>
+    </div>
+    <div class="p-4">
 
       <!-- Color Mode Section -->
       <div class="mb-6">
@@ -111,6 +112,22 @@
             <input type="file" id="importConfig" accept=".json" class="hidden" />
           </label>
         </div>
+      </div>
+
+      <!-- Additional Buttons -->
+      <div class="mb-6 space-y-2">
+        <a href="https://github.com/sponsors/Yiannis128" target="_blank" class="btn btn-ghost w-full">
+          <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+          </svg>
+          Donate via GitHub Sponsors
+        </a>
+        <button id="additionalSettings" class="btn btn-ghost w-full">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path>
+          </svg>
+          Additional Settings
+        </button>
       </div>
     </div>
   </div>

@@ -97,6 +97,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Export/Import functionality
   const exportBtn = document.getElementById('exportConfig');
   const importInput = document.getElementById('importConfig');
+  const additionalSettingsBtn = document.getElementById('additionalSettings');
 
   exportBtn.addEventListener('click', () => {
     // Serialize config data to JSON
@@ -139,5 +140,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Reset file input
     e.target.value = '';
+  });
+
+  // Additional Settings button
+  additionalSettingsBtn.addEventListener('click', () => {
+    chrome.tabs.update({ url: 'chrome://settings/appearance' });
   });
 });
