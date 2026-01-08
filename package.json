@@ -6,6 +6,7 @@
   "scripts": {
     "build:css": "tailwindcss -i src/input.css -o src/output.css",
     "watch": "tailwindcss -i src/input.css -o src/output.css --watch",
+    "build": "npm run build:css && mkdir -p dist && zip -r dist/startboard.zip manifest.json src LICENSE",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
