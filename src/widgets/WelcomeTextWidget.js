@@ -13,9 +13,10 @@ class WelcomeTextWidget extends StartWidget {
   }
 
   registerConfig(config) {
-    // Register fields with namespacing (welcomeText.show, welcomeText.text)
+    // Register fields with namespacing (welcomeText.show, welcomeText.text, welcomeText.font)
     this.registerBooleanField(config, 'showWelcomeText', 'show', true);
     this.registerStringField(config, 'welcomeText', 'text', 'Welcome to StartBoard');
+    this.registerStringField(config, 'welcomeTextFont', 'font', 'sans-serif');
   }
 
   createSettingsUI(settingsContainer) {
@@ -27,12 +28,28 @@ class WelcomeTextWidget extends StartWidget {
         <input type="checkbox" id="welcomeTextToggle" class="toggle toggle-primary" />
         <span class="ml-3">Show welcome text</span>
       </label>
-      <div class="form-control">
+      <div class="form-control mb-4">
         <label class="label">
           <span class="label-text">Text</span>
         </label>
         <input type="text" id="welcomeTextInput" class="input input-bordered" />
       </div>
+      <details class="collapse collapse-arrow bg-base-200">
+        <summary class="collapse-title text-sm font-medium">Font Style</summary>
+        <div class="collapse-content">
+          <div class="grid grid-cols-1 gap-2 pt-2">
+            <button class="btn btn-outline font-selector-btn" data-font="sans-serif" style="font-family: sans-serif;">
+              Sans Serif
+            </button>
+            <button class="btn btn-outline font-selector-btn" data-font="serif" style="font-family: serif;">
+              Serif
+            </button>
+            <button class="btn btn-outline font-selector-btn" data-font="monospace" style="font-family: monospace;">
+              Monospace
+            </button>
+          </div>
+        </div>
+      </details>
     `;
     settingsContainer.appendChild(section);
     return section;
@@ -42,6 +59,7 @@ class WelcomeTextWidget extends StartWidget {
     this.textElement = document.getElementById('welcomeText');
     const toggle = document.getElementById('welcomeTextToggle');
     const textInput = document.getElementById('welcomeTextInput');
+    const fontButtons = document.querySelectorAll('.font-selector-btn');
 
     // Initialize toggle state
     toggle.checked = config.showWelcomeText;
@@ -51,6 +69,12 @@ class WelcomeTextWidget extends StartWidget {
 
     // Update displayed text
     this.textElement.textContent = config.welcomeText;
+
+    // Apply font style
+    this.textElement.style.fontFamily = config.welcomeTextFont;
+
+    // Highlight selected font button
+    this.updateFontButtonSelection(fontButtons, config.welcomeTextFont);
 
     // Show/hide based on config
     if (config.showWelcomeText) {
@@ -75,6 +99,26 @@ class WelcomeTextWidget extends StartWidget {
       const newText = e.target.value.trim() || 'Welcome';
       await config.setWelcomeText(newText);
       this.textElement.textContent = newText;
+    });
+
+    // Listen for font selection changes
+    fontButtons.forEach(button => {
+      button.addEventListener('click', async (e) => {
+        const selectedFont = e.target.dataset.font;
+        await config.setWelcomeTextFont(selectedFont);
+        this.textElement.style.fontFamily = selectedFont;
+        this.updateFontButtonSelection(fontButtons, selectedFont);
+      });
+    });
+  }
+
+  updateFontButtonSelection(buttons, selectedFont) {
+    buttons.forEach(btn => {
+      if (btn.dataset.font === selectedFont) {
+        btn.classList.add('btn-active');
+      } else {
+        btn.classList.remove('btn-active');
+      }
     });
   }
 
