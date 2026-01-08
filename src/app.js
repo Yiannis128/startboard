@@ -6,6 +6,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   const colorModeRadios = document.querySelectorAll('input[name="colorMode"]');
   const settingsContainer = document.getElementById('settingsContainer');
 
+  // Display version from manifest
+  const manifest = chrome.runtime.getManifest();
+  const versionDisplay = document.getElementById('versionDisplay');
+  if (versionDisplay && manifest.version) {
+    versionDisplay.textContent = `v${manifest.version}`;
+  }
+
   // Register widget configs before loading
   welcomeTextWidget.registerConfig(config);
   timeWidget.registerConfig(config);
