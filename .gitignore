@@ -3,7 +3,7 @@ node_modules/
 
 # Build output
 src/output.css
-./dist
+dist/
 
 # Logs
 npm-debug.log*
