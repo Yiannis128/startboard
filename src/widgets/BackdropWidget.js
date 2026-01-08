@@ -142,7 +142,7 @@ class BackdropWidget extends StartWidget {
     const fitImages = [
      'backdrop/pexels-photo-449011.jpeg',
      'backdrop/flower-garden-blue-sky-hokkaido-japan-60628.jpeg',
-     'backdrop/ssha-kolorado-gory-plato-ultra-hd-panorama-4k-5k.jpg'
+     'backdrop/ssha-kolorado-gory-plato-ultra-hd-panorama-4k-5k.jpg',
      'backdrop/G9w1XUpWoAAomGc.jpeg',
      'backdrop/G9w1XUqXwAAP4CB.jpeg',
      'backdrop/G9w1XUrXAAEKoX4.jpeg',
