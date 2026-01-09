@@ -202,9 +202,10 @@ class TimeWidget extends StartWidget {
   updateTimeUnit(id, value) {
     const el = document.getElementById(id);
     if (el) {
-      el.style.setProperty('--value', value);
-      el.setAttribute('aria-label', value);
-      el.textContent = String(value).padStart(2, '0');
+      const paddedValue = String(value).padStart(2, '0');
+      el.style.setProperty('--value', paddedValue);
+      el.setAttribute('aria-label', paddedValue);
+      el.textContent = paddedValue;
     }
   }
 
