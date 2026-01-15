@@ -134,7 +134,7 @@ class TimeWidget extends StartWidget {
   }
 
   createCountdownSpan(id) {
-    return `<span id="${id}" style="--value:0;" aria-live="polite" aria-label="0">00</span>`;
+    return `<span id="${id}" style="--value:0; --digits:2;" aria-live="polite" aria-label="0"></span>`;
   }
 
   createLabelledClock(columnClasses = 'flex flex-col', showSeconds = true, use24Hour = true) {
@@ -202,10 +202,10 @@ class TimeWidget extends StartWidget {
   updateTimeUnit(id, value) {
     const el = document.getElementById(id);
     if (el) {
-      const paddedValue = String(value).padStart(2, '0');
-      el.style.setProperty('--value', paddedValue);
-      el.setAttribute('aria-label', paddedValue);
-      el.textContent = paddedValue;
+      // DaisyUI countdown component uses --value and --digits for display
+      el.style.setProperty('--value', String(value));
+      // Update aria-label for accessibility with padded value
+      el.setAttribute('aria-label', String(value).padStart(2, '0'));
     }
   }
 
