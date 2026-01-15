@@ -70,13 +70,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     } else if (config.backdropMode === 'gradient') {
       backdropWidget.applyGradient(config.backdropGradient, config.backdropAngle);
     } else if (config.backdropMode === 'image') {
-      backdropWidget.applyImage(config.backdropImage, config.backdropImageRepeat);
+      backdropWidget.applyBackgroundImage(config.backdropImage, config.backdropImageRepeat);
     }
   }
 
   // Initialize theme
   const currentMode = config.displayMode;
   applyTheme(currentMode);
+
+  // Show the page now that backdrop and theme are applied
+  document.body.classList.add('loaded');
 
   // Set the correct radio button
   colorModeRadios.forEach(radio => {

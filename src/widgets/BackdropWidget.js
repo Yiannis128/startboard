@@ -116,7 +116,7 @@ class BackdropWidget extends StartWidget {
     Object.defineProperty(config, 'setBackdropAngle', {
       value: async function(value) { await this._set(angleKey, Number(value)); }
     });
-    // Register backdropImage field (backdrop.image)
+    // Register backdropImage field (backdrop.image) - stores file path or data URL
     this.registerStringField(config, 'backdropImage', 'image', '');
     // Register backdropImageRepeat field (backdrop.imageRepeat)
     const repeatKey = this.getConfigKey('imageRepeat');
@@ -182,6 +182,20 @@ class BackdropWidget extends StartWidget {
       </label>
     `).join('');
 
+    // Add custom tiled image upload option
+    const customTiledOption = `
+      <label class="cursor-pointer">
+        <input type="radio" name="backdropImage" value="custom-tiled" data-repeat="true" data-custom="true" class="hidden peer" />
+        <div class="w-full p-2 rounded-lg border-2 border-base-300 peer-checked:border-primary peer-checked:bg-primary/10 hover:bg-base-200 transition-colors">
+          <div id="customTiledPreview" class="w-full h-16 rounded bg-base-300 flex items-center justify-center text-4xl">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-8 h-8">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+          </div>
+        </div>
+      </label>
+    `;
+
     // Generate fit image options with thumbnails
     const fitImageOptions = fitImages.map(imgPath => `
       <label class="cursor-pointer">
@@ -191,6 +205,20 @@ class BackdropWidget extends StartWidget {
         </div>
       </label>
     `).join('');
+
+    // Add custom fitted image upload option
+    const customFittedOption = `
+      <label class="cursor-pointer">
+        <input type="radio" name="backdropImage" value="custom-fitted" data-repeat="false" data-custom="true" class="hidden peer" />
+        <div class="w-full p-2 rounded-lg border-2 border-base-300 peer-checked:border-primary peer-checked:bg-primary/10 hover:bg-base-200 transition-colors">
+          <div id="customFittedPreview" class="w-full h-16 rounded bg-base-300 flex items-center justify-center text-4xl">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-8 h-8">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+          </div>
+        </div>
+      </label>
+    `;
 
     section.innerHTML = `
       <h3 class="text-sm font-semibold mb-3">Backdrop</h3>
@@ -252,13 +280,19 @@ class BackdropWidget extends StartWidget {
         </label>
         <div class="grid grid-cols-2 gap-2 mb-4">
           ${repeatImageOptions}
+          ${customTiledOption}
         </div>
         <label class="label">
           <span class="label-text">Fitted Backgrounds</span>
         </label>
-        <div class="grid grid-cols-2 gap-2">
+        <div class="grid grid-cols-2 gap-2 mb-4">
           ${fitImageOptions}
+          ${customFittedOption}
         </div>
+
+        <!-- Hidden file inputs for custom image uploads -->
+        <input type="file" id="customTiledInput" accept="image/*" class="hidden" />
+        <input type="file" id="customFittedInput" accept="image/*" class="hidden" />
       </div>
     `;
     settingsContainer.appendChild(section);
@@ -285,7 +319,7 @@ class BackdropWidget extends StartWidget {
     } else if (config.backdropMode === 'gradient') {
       this.applyGradient(config.backdropGradient, config.backdropAngle);
     } else if (config.backdropMode === 'image') {
-      this.applyImage(config.backdropImage, config.backdropImageRepeat);
+      this.applyBackgroundImage(config.backdropImage, config.backdropImageRepeat);
     }
 
     // Function to show/hide sections based on mode
@@ -357,11 +391,10 @@ class BackdropWidget extends StartWidget {
         } else if (newMode === 'gradient') {
           this.applyGradient(config.backdropGradient, config.backdropAngle);
         } else if (newMode === 'image') {
-          this.applyImage(config.backdropImage, config.backdropImageRepeat);
+          this.applyBackgroundImage(config.backdropImage, config.backdropImageRepeat);
         } else {
           // Clear backdrop
-          document.body.style.backgroundColor = '';
-          document.body.style.backgroundImage = '';
+          this.clearBackground();
         }
       });
     });
@@ -401,11 +434,132 @@ class BackdropWidget extends StartWidget {
       radio.addEventListener('change', async (e) => {
         const newImage = e.target.value;
         const isRepeat = e.target.dataset.repeat === 'true';
-        await config.setBackdropImage(newImage);
-        await config.setBackdropImageRepeat(isRepeat);
-        this.applyImage(newImage, isRepeat);
+        const isCustom = e.target.dataset.custom === 'true';
+
+        if (isCustom) {
+          // Trigger file input for custom images
+          const fileInput = isRepeat
+            ? document.getElementById('customTiledInput')
+            : document.getElementById('customFittedInput');
+          fileInput.click();
+        } else {
+          await config.setBackdropImage(newImage);
+          await config.setBackdropImageRepeat(isRepeat);
+          this.applyBackgroundImage(newImage, isRepeat);
+        }
       });
     });
+
+    // Handle custom tiled image upload
+    const customTiledInput = document.getElementById('customTiledInput');
+    const customTiledPreview = document.getElementById('customTiledPreview');
+    const customTiledRadio = document.querySelector('input[value="custom-tiled"]');
+
+    customTiledInput.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (file && file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+          const dataUrl = event.target.result;
+          await config.setBackdropImage(dataUrl);
+          await config.setBackdropImageRepeat(true);
+
+          // Apply the image
+          this.applyBackgroundImage(dataUrl, true);
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+
+    // Handle custom fitted image upload
+    const customFittedInput = document.getElementById('customFittedInput');
+    const customFittedPreview = document.getElementById('customFittedPreview');
+    const customFittedRadio = document.querySelector('input[value="custom-fitted"]');
+
+    customFittedInput.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (file && file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+          const dataUrl = event.target.result;
+          await config.setBackdropImage(dataUrl);
+          await config.setBackdropImageRepeat(false);
+
+          // Apply the image
+          this.applyBackgroundImage(dataUrl, false);
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+
+    // Initialize custom image radio selections if backdropImage contains a data URL
+    if (config.backdropImage && config.backdropImage.startsWith('data:')) {
+      if (config.backdropImageRepeat) {
+        customTiledRadio.checked = true;
+      } else {
+        customFittedRadio.checked = true;
+      }
+    }
+  }
+
+  clearBackground() {
+    // Low-level function that completely clears and resets all background properties
+    document.body.style.backgroundColor = '';
+    document.body.style.backgroundImage = '';
+    document.body.style.backgroundSize = '';
+    document.body.style.backgroundRepeat = '';
+    document.body.style.backgroundPosition = '';
+  }
+
+  applyBackgroundGradient(colors, angle = 135, weights = null) {
+    // Low-level function that applies colors/gradients directly to CSS
+    if (!colors || colors.length === 0) {
+      // Clear background completely
+      this.clearBackground();
+      return;
+    }
+
+    // Clear all background properties first
+    this.clearBackground();
+
+    if (colors.length === 1) {
+      // Single color - solid background
+      document.body.style.backgroundColor = colors[0] || '';
+      return;
+    }
+
+    // Multiple colors - create gradient
+    // Calculate color stops based on weights
+    let stops = [];
+
+    if (weights && weights.length === colors.length) {
+      // Normalize weights to sum to 1
+      const total = weights.reduce((sum, w) => sum + w, 0);
+      const normalizedWeights = weights.map(w => w / total);
+
+      // Calculate cumulative positions for color stops
+      let cumulative = 0;
+      stops = colors.map((color, i) => {
+        if (i === 0) {
+          return `${color} 0%`;
+        }
+        cumulative += normalizedWeights[i - 1];
+        const pos = Math.round(cumulative * 100);
+        if (i === colors.length - 1) {
+          return `${color} 100%`;
+        }
+        return `${color} ${pos}%`;
+      });
+    } else {
+      // Equal distribution - evenly space colors
+      stops = colors.map((color, i) => {
+        const pos = Math.round((i / (colors.length - 1)) * 100);
+        return `${color} ${pos}%`;
+      });
+    }
+
+    // Apply gradient (background already cleared above)
+    document.body.style.backgroundImage = `linear-gradient(${angle}deg, ${stops.join(', ')})`;
   }
 
   applyBackgroundColor(colorName) {
@@ -413,15 +567,13 @@ class BackdropWidget extends StartWidget {
     const colorPair = this.backgroundColorPairs.find(c => c.name === colorName);
     if (!colorPair) {
       console.warn(`Background color "${colorName}" not found, using default`);
+      this.clearBackground();
       return;
     }
 
-    // Clear any gradient background
-    document.body.style.backgroundImage = '';
-
-    // If "Default" is selected, remove the inline background color
+    // If "Default" is selected, remove the background
     if (colorName === 'Default' || !colorPair.light || !colorPair.dark) {
-      document.body.style.backgroundColor = '';
+      this.clearBackground();
       return;
     }
 
@@ -429,8 +581,8 @@ class BackdropWidget extends StartWidget {
     const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
     const backgroundColor = isDark ? colorPair.dark : colorPair.light;
 
-    // Apply to body background
-    document.body.style.backgroundColor = backgroundColor;
+    // Use unified gradient function with single color
+    this.applyBackgroundGradient([backgroundColor]);
   }
 
   applyGradient(gradientName, angle = 135) {
@@ -438,6 +590,7 @@ class BackdropWidget extends StartWidget {
     const gradientPair = this.gradientPairs.find(g => g.name === gradientName);
     if (!gradientPair) {
       console.warn(`Gradient "${gradientName}" not found, using default`);
+      this.clearBackground();
       return;
     }
 
@@ -445,32 +598,25 @@ class BackdropWidget extends StartWidget {
     const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
     const colors = isDark ? gradientPair.dark : gradientPair.light;
 
-    // Clear solid background and apply gradient
-    document.body.style.backgroundColor = '';
-    document.body.style.backgroundImage = `linear-gradient(${angle}deg, ${colors[0]}, ${colors[1]})`;
-    document.body.style.backgroundSize = '';
-    document.body.style.backgroundRepeat = '';
-    document.body.style.backgroundPosition = '';
+    // Use unified gradient function
+    this.applyBackgroundGradient(colors, angle);
   }
 
-  applyImage(imagePath, isRepeat = false) {
-    if (!imagePath) {
-      // Clear background if no image selected
-      document.body.style.backgroundColor = '';
-      document.body.style.backgroundImage = '';
-      document.body.style.backgroundSize = '';
-      document.body.style.backgroundRepeat = '';
-      document.body.style.backgroundPosition = '';
+  applyBackgroundImage(src, tiled = false) {
+    if (!src) {
+      // Clear all backgrounds
+      this.clearBackground();
       return;
     }
 
-    // Clear other background styles
-    document.body.style.backgroundColor = '';
+    // Clear all backgrounds first
+    this.clearBackground();
 
-    // Apply image
-    document.body.style.backgroundImage = `url('img/${imagePath}')`;
+    // Determine if src is a data URL or a file path
+    const imageUrl = src.startsWith('data:') ? src : `img/${src}`;
+    document.body.style.backgroundImage = `url('${imageUrl}')`;
 
-    if (isRepeat) {
+    if (tiled) {
       // Tiled mode
       document.body.style.backgroundRepeat = 'repeat';
       document.body.style.backgroundSize = 'auto';

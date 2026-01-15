@@ -1,2 +1,12 @@
 @import "tailwindcss";
 @plugin "daisyui";
+
+/* Hide body initially to prevent flash of unstyled content */
+body {
+  opacity: 0;
+  transition: opacity 0.2s ease-in;
+}
+
+body.loaded {
+  opacity: 1;
+}
