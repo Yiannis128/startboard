@@ -11,5 +11,6 @@
     "48": "src/img/icon.png",
     "128": "src/img/icon.png"
   },
-  "permissions": ["storage"]
+  "permissions": ["storage"],
+  "host_permissions": ["https://services.helium.imput.net/*"]
 }

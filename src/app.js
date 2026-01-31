@@ -16,6 +16,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Register widget configs before loading
   welcomeTextWidget.registerConfig(config);
   timeWidget.registerConfig(config);
+  searchWidget.registerConfig(config);
   shortcutsWidget.registerConfig(config);
   themeWidget.registerConfig(config);
   backdropWidget.registerConfig(config);
@@ -26,6 +27,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Create widget settings UI
   welcomeTextWidget.createSettingsUI(settingsContainer);
   timeWidget.createSettingsUI(settingsContainer);
+  searchWidget.createSettingsUI(settingsContainer);
   shortcutsWidget.createSettingsUI(settingsContainer);
   themeWidget.createSettingsUI(settingsContainer);
   backdropWidget.createSettingsUI(settingsContainer);
@@ -33,6 +35,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Initialize widgets
   await welcomeTextWidget.init(config);
   await timeWidget.init(config);
+  await searchWidget.init(config);
   await shortcutsWidget.init(config);
   await themeWidget.init(config);
   await backdropWidget.init(config);

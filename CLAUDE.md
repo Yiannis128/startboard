@@ -24,12 +24,16 @@ The codebase supports two deployment targets with shared source code:
 
 | Target | Storage | Version Source | Build Output |
 |--------|---------|----------------|--------------|
-| Chrome Extension | `chrome.storage.sync` | `manifest.json` | `dist/extension/` |
+| Chrome Extension | `chrome.storage.sync` + `local` | `manifest.json` | `dist/extension/` |
 | PWA | `localStorage` | `version.js` (generated) | `dist/pwa/` |
 
 **Abstraction layers** in `src/`:
 - `storage/StorageAdapter.js` - Detects runtime and provides appropriate storage backend
 - `runtime/RuntimeAdapter.js` - Abstracts Chrome-specific APIs (version, settings)
+
+**Storage methods:**
+- `save()`/`load()` - Synced settings (Chrome sync storage has 8KB per item limit)
+- `saveLocal()`/`loadLocal()` - Large data like bangs (uses `chrome.storage.local` / separate localStorage key)
 
 The build scripts (`scripts/build-*.js`) handle target-specific differences:
 - Extension build excludes PWA files (`sw.js`, `manifest.webmanifest`)
@@ -82,6 +86,13 @@ Must call `await config.load()` before accessing values.
 3. Click "Load unpacked" → select `dist/extension/`
 
 After code changes, click refresh on the extension card.
+
+## External Dependencies
+
+- **Helium Bangs**: The SearchWidget fetches bang definitions from `https://services.helium.imput.net/bangs.json`
+  - Requires `host_permissions` in `manifest.json` for the Chrome extension
+  - The response is JavaScript-like (has comments, trailing commas) and must be sanitized before JSON parsing
+  - Cached in local storage for one week to reduce API calls
 
 ## Deployment
 

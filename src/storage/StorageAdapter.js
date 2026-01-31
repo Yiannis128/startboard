@@ -49,6 +49,26 @@ class StorageAdapter {
   async saveAll(data) {
     throw new Error('Not implemented');
   }
+
+  /**
+   * Save large data to local-only storage (not synced)
+   * Use this for data that exceeds sync storage limits
+   * @param {string} key - Storage key
+   * @param {*} value - Value to store
+   * @returns {Promise<void>}
+   */
+  async saveLocal(key, value) {
+    throw new Error('Not implemented');
+  }
+
+  /**
+   * Load data from local-only storage
+   * @param {string} key - Storage key
+   * @returns {Promise<*>} Stored value or undefined
+   */
+  async loadLocal(key) {
+    throw new Error('Not implemented');
+  }
 }
 
 /**
@@ -56,25 +76,61 @@ class StorageAdapter {
  */
 class ChromeStorageAdapter extends StorageAdapter {
   async load() {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       chrome.storage.sync.get(null, (items) => {
-        resolve(items);
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else {
+          resolve(items);
+        }
       });
     });
   }
 
   async save(key, value) {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       chrome.storage.sync.set({ [key]: value }, () => {
-        resolve();
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else {
+          resolve();
+        }
       });
     });
   }
 
   async saveAll(data) {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       chrome.storage.sync.set(data, () => {
-        resolve();
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else {
+          resolve();
+        }
+      });
+    });
+  }
+
+  async saveLocal(key, value) {
+    return new Promise((resolve, reject) => {
+      chrome.storage.local.set({ [key]: value }, () => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else {
+          resolve();
+        }
+      });
+    });
+  }
+
+  async loadLocal(key) {
+    return new Promise((resolve, reject) => {
+      chrome.storage.local.get(key, (items) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else {
+          resolve(items[key]);
+        }
       });
     });
   }
@@ -123,6 +179,27 @@ class LocalStorageAdapter extends StorageAdapter {
         alert('Storage is full. Please remove some custom images or export your settings.');
       }
       throw e;
+    }
+  }
+
+  async saveLocal(key, value) {
+    try {
+      localStorage.setItem(`startboard_local_${key}`, JSON.stringify(value));
+    } catch (e) {
+      if (e.name === 'QuotaExceededError' || e.code === 22) {
+        console.error('Local storage quota exceeded:', e);
+      }
+      throw e;
+    }
+  }
+
+  async loadLocal(key) {
+    const stored = localStorage.getItem(`startboard_local_${key}`);
+    if (!stored) return undefined;
+    try {
+      return JSON.parse(stored);
+    } catch {
+      return undefined;
     }
   }
 }
