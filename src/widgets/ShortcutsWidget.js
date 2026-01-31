@@ -25,10 +25,6 @@ class ShortcutsManager {
     this.urlInput = document.getElementById('shortcutUrl');
     this.contextMenu = document.getElementById('contextMenu');
 
-    // Set grid columns based on config
-    const elementsPerRow = config.elementsPerRow;
-    this.grid.style.gridTemplateColumns = `repeat(${elementsPerRow}, minmax(0, 1fr))`;
-
     // Setup dialog event handlers
     document.getElementById('saveShortcut').addEventListener('click', () => this.saveShortcut());
     document.getElementById('cancelShortcut').addEventListener('click', () => this.closeDialog());

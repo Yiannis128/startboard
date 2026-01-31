@@ -6,11 +6,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   const colorModeRadios = document.querySelectorAll('input[name="colorMode"]');
   const settingsContainer = document.getElementById('settingsContainer');
 
-  // Display version from manifest
-  const manifest = chrome.runtime.getManifest();
+  // Display version
+  const version = RuntimeAdapter.getVersion();
   const versionDisplay = document.getElementById('versionDisplay');
-  if (versionDisplay && manifest.version) {
-    versionDisplay.textContent = `v${manifest.version}`;
+  if (versionDisplay && version) {
+    versionDisplay.textContent = `v${version}`;
   }
 
   // Register widget configs before loading
@@ -111,7 +111,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   exportBtn.addEventListener('click', () => {
     // Serialize config data to JSON
-    const configData = JSON.stringify(config._data, null, 2);
+    const configData = JSON.stringify(config.export(), null, 2);
 
     // Create blob and download link
     const blob = new Blob([configData], { type: 'application/json' });
@@ -136,10 +136,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       const text = await file.text();
       const importedData = JSON.parse(text);
 
-      // Update chrome storage with imported data
-      await new Promise((resolve) => {
-        chrome.storage.sync.set(importedData, resolve);
-      });
+      // Update storage with imported data
+      await config.importAll(importedData);
 
       // Reload the page to apply new configuration
       location.reload();
@@ -152,8 +150,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     e.target.value = '';
   });
 
-  // Additional Settings button
-  additionalSettingsBtn.addEventListener('click', () => {
-    chrome.tabs.update({ url: 'chrome://settings/appearance' });
-  });
+  // Additional Settings button (only available in extension)
+  if (RuntimeAdapter.isExtension()) {
+    additionalSettingsBtn.addEventListener('click', () => {
+      RuntimeAdapter.openSettings();
+    });
+  } else {
+    additionalSettingsBtn.style.display = 'none';
+  }
 });

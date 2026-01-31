@@ -7,6 +7,9 @@
     "build:css": "tailwindcss -i src/input.css -o src/output.css",
     "watch": "tailwindcss -i src/input.css -o src/output.css --watch",
     "build": "npm run build:css && mkdir -p dist && zip -r dist/startboard.zip manifest.json src LICENSE",
+    "build:extension": "npm run build:css && node scripts/build-extension.js",
+    "build:pwa": "npm run build:css && node scripts/build-pwa.js",
+    "build:all": "npm run build:extension && npm run build:pwa",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

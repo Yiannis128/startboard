@@ -452,7 +452,6 @@ class BackdropWidget extends StartWidget {
 
     // Handle custom tiled image upload
     const customTiledInput = document.getElementById('customTiledInput');
-    const customTiledPreview = document.getElementById('customTiledPreview');
     const customTiledRadio = document.querySelector('input[value="custom-tiled"]');
 
     customTiledInput.addEventListener('change', async (e) => {
@@ -473,7 +472,6 @@ class BackdropWidget extends StartWidget {
 
     // Handle custom fitted image upload
     const customFittedInput = document.getElementById('customFittedInput');
-    const customFittedPreview = document.getElementById('customFittedPreview');
     const customFittedRadio = document.querySelector('input[value="custom-fitted"]');
 
     customFittedInput.addEventListener('change', async (e) => {

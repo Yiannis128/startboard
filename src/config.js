@@ -9,24 +9,24 @@ class Config {
   constructor() {
     this._data = {};
     this._loaded = false;
+    this._storage = storageAdapter;
   }
 
   async load() {
-    return new Promise((resolve) => {
-      chrome.storage.sync.get(null, (items) => {
-        this._data = items;
-        this._loaded = true;
-        resolve();
-      });
-    });
+    this._data = await this._storage.load();
+    this._loaded = true;
   }
 
-  _save(key, value) {
-    return new Promise((resolve) => {
-      chrome.storage.sync.set({ [key]: value }, () => {
-        resolve();
-      });
-    });
+  async _save(key, value) {
+    await this._storage.save(key, value);
+  }
+
+  async importAll(data) {
+    await this._storage.saveAll(data);
+  }
+
+  export() {
+    return { ...this._data };
   }
 
   _get(key, defaultValue = null) {
@@ -51,10 +51,6 @@ class Config {
 
   get maxShortcuts() {
     return this._get('maxShortcuts', 16);
-  }
-
-  get elementsPerRow() {
-    return this._get('elementsPerRow', 8);
   }
 
   get shortcuts() {
