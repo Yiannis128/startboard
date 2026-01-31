@@ -18,6 +18,7 @@ const ASSETS_TO_CACHE = [
   './widgets/StartWidget.js',
   './widgets/WelcomeTextWidget.js',
   './widgets/TimeWidget.js',
+  './widgets/SearchWidget.js',
   './widgets/ShortcutsWidget.js',
   './widgets/ThemeWidget.js',
   './widgets/BackdropWidget.js',

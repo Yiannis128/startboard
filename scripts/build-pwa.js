@@ -41,6 +41,11 @@ const SRC_FILES = [
   'img/icon-512.png'
 ];
 
+// Directories to copy recursively from src/
+const SRC_DIRS = [
+  'img/backdrop'
+];
+
 function ensureDir(dir) {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
@@ -57,6 +62,22 @@ function copyFile(src, dest) {
   const destDir = path.dirname(dest);
   ensureDir(destDir);
   fs.copyFileSync(src, dest);
+}
+
+function copyDirRecursive(srcDir, destDir) {
+  ensureDir(destDir);
+  const entries = fs.readdirSync(srcDir, { withFileTypes: true });
+
+  for (const entry of entries) {
+    const srcPath = path.join(srcDir, entry.name);
+    const destPath = path.join(destDir, entry.name);
+
+    if (entry.isDirectory()) {
+      copyDirRecursive(srcPath, destPath);
+    } else {
+      fs.copyFileSync(srcPath, destPath);
+    }
+  }
 }
 
 function injectPwaIntoHtml(htmlPath) {
@@ -129,6 +150,19 @@ function build() {
       console.log(`  Copied: ${file}`);
     } else {
       console.warn(`  Warning: ${file} not found`);
+    }
+  }
+
+  // Copy source directories
+  for (const dir of SRC_DIRS) {
+    const src = path.join(ROOT, 'src', dir);
+    const dest = path.join(PWA_DIST, dir);
+
+    if (fs.existsSync(src)) {
+      copyDirRecursive(src, dest);
+      console.log(`  Copied directory: ${dir}`);
+    } else {
+      console.warn(`  Warning: ${dir} not found`);
     }
   }
 
