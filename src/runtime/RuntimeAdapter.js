@@ -44,4 +44,26 @@ class RuntimeAdapter {
       alert('Additional settings are only available when running as a browser extension.');
     }
   }
+
+  /**
+   * Perform a search using Chrome Search API
+   * Only works in Chrome extension context
+   * @param {string} query - The search query
+   * @param {function} onError - Optional callback if search fails
+   * @returns {boolean} True if Chrome Search API was used, false otherwise
+   */
+  static search(query, onError) {
+    if (RuntimeAdapter.isExtension() && chrome.search && chrome.search.query) {
+      chrome.search.query({
+        text: query,
+        disposition: 'CURRENT_TAB'
+      }, () => {
+        if (chrome.runtime.lastError && onError) {
+          onError(chrome.runtime.lastError.message);
+        }
+      });
+      return true;
+    }
+    return false;
+  }
 }

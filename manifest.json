@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Startboard",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Open source start page for Chrome.",
   "chrome_url_overrides": {
     "newtab": "src/index.html"
@@ -11,6 +11,6 @@
     "48": "src/img/icon.png",
     "128": "src/img/icon.png"
   },
-  "permissions": ["storage"],
+  "permissions": ["storage", "search"],
   "host_permissions": ["https://services.helium.imput.net/*"]
 }

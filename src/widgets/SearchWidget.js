@@ -44,24 +44,26 @@ class SearchWidget extends StartWidget {
         <input type="checkbox" id="searchToggle" class="toggle toggle-primary" />
         <span class="ml-3">Show search bar</span>
       </label>
-      <div class="form-control mb-4">
-        <label class="label">
-          <span class="label-text">Search Engine</span>
-        </label>
-        <select id="searchEngineSelect" class="select select-bordered w-full">
-          <option value="google">Google</option>
-          <option value="duckduckgo">DuckDuckGo</option>
-          <option value="bing">Bing</option>
-          <option value="brave">Brave Search</option>
-          <option value="custom">Custom</option>
-        </select>
-      </div>
-      <div id="customUrlContainer" class="form-control mb-4 hidden">
-        <label class="label">
-          <span class="label-text">Custom URL</span>
-        </label>
-        <input type="text" id="searchCustomUrlInput" class="input input-bordered w-full" placeholder="Use %s for query" />
-        <div id="customUrlError" class="text-error text-sm mt-1 hidden"></div>
+      <div id="engineSelectionSection">
+        <div class="form-control mb-4">
+          <label class="label">
+            <span class="label-text">Search Engine</span>
+          </label>
+          <select id="searchEngineSelect" class="select select-bordered w-full">
+            <option value="google">Google</option>
+            <option value="duckduckgo">DuckDuckGo</option>
+            <option value="bing">Bing</option>
+            <option value="brave">Brave Search</option>
+            <option value="custom">Custom</option>
+          </select>
+        </div>
+        <div id="customUrlContainer" class="form-control mb-4 hidden">
+          <label class="label">
+            <span class="label-text">Custom URL</span>
+          </label>
+          <input type="text" id="searchCustomUrlInput" class="input input-bordered w-full" placeholder="Use %s for query" />
+          <div id="customUrlError" class="text-error text-sm mt-1 hidden"></div>
+        </div>
       </div>
       <label class="flex items-center cursor-pointer mb-2">
         <input type="checkbox" id="bangsToggle" class="toggle toggle-primary" />
@@ -132,6 +134,7 @@ class SearchWidget extends StartWidget {
     // Settings elements
     const toggle = document.getElementById('searchToggle');
     const engineSelect = document.getElementById('searchEngineSelect');
+    const engineSelectionSection = document.getElementById('engineSelectionSection');
     const customUrlContainer = document.getElementById('customUrlContainer');
     const customUrlInput = document.getElementById('searchCustomUrlInput');
     const customUrlError = document.getElementById('customUrlError');
@@ -139,6 +142,12 @@ class SearchWidget extends StartWidget {
     const bangsControls = document.getElementById('bangsControls');
     const refreshBangsBtn = document.getElementById('refreshBangsBtn');
     const bangsError = document.getElementById('bangsError');
+
+    // Hide engine selection in Chrome extension mode - the extension uses Chrome's
+    // Search API which respects the user's default search engine from browser settings
+    if (RuntimeAdapter.isExtension()) {
+      engineSelectionSection.classList.add('hidden');
+    }
 
     // Initialize states
     toggle.checked = config.showSearch;
@@ -305,6 +314,22 @@ class SearchWidget extends StartWidget {
     return template.replace('%s', encodeURIComponent(query));
   }
 
+  executeSearch(query) {
+    // For extension: use Chrome Search API (respects user's default search engine)
+    const used = RuntimeAdapter.search(query, (errorMessage) => {
+      this.searchError.textContent = 'Search failed: ' + errorMessage;
+      this.searchError.classList.remove('hidden');
+    });
+
+    if (used) {
+      return;
+    }
+
+    // For PWA: use the configured search engine URL
+    const url = this.getSearchUrl(query);
+    window.location.href = url;
+  }
+
   performSearch() {
     const query = this.searchInput.value.trim();
     if (!query) return;
@@ -328,9 +353,11 @@ class SearchWidget extends StartWidget {
             window.location.href = url;
             return;
           } else {
-            // Unknown bang - show warning and search normally with full query
+            // Unknown bang - show warning and search with just the query (without bang prefix)
             this.searchError.textContent = `Unknown bang "!${bangName}", searching normally...`;
             this.searchError.classList.remove('hidden');
+            this.executeSearch(searchQuery);
+            return;
           }
         } else if (bangOnly) {
           // Bang without query - show guidance
@@ -347,8 +374,7 @@ class SearchWidget extends StartWidget {
       }
 
       // Normal search
-      const url = this.getSearchUrl(query);
-      window.location.href = url;
+      this.executeSearch(query);
     } catch (err) {
       this.searchError.textContent = 'Search failed: ' + err.message;
       this.searchError.classList.remove('hidden');
