@@ -34,7 +34,6 @@ test('a custom backdrop upload goes to the local tier, never to sync', async () 
 
   // Five times the 8KB chrome.storage.sync per-item quota.
   const payload = 'A'.repeat(40_000);
-  const dataUrl = `data:image/png;base64,${payload}`;
   const input = document.querySelector('[data-widget="backdrop"] [data-upload="custom-tiled"]');
   Object.defineProperty(input, 'files', {
     value: [new window.File([payload], 'wallpaper.png', { type: 'image/png' })],
@@ -45,21 +44,23 @@ test('a custom backdrop upload goes to the local tier, never to sync', async () 
   input.click = () => {
     pickerOpened = true;
   };
-  globalThis.FileReader = class {
-    readAsDataURL() {
-      this.result = dataUrl;
-      queueMicrotask(() => this.onload());
-    }
-  };
 
   await set(option(window, 'backdrop', 'image', 'custom-tiled'), true);
   assert.ok(pickerOpened, 'selecting the upload tile should open the picker');
 
   // jsdom cannot run a real picker, so stand in for the user choosing a file.
+  // Its FileReader is real, so this exercises the actual encode path.
   fire(input, 'change');
   await settled();
 
-  assert.equal(env.local['backdrop.customTiled'], dataUrl);
+  const stored = env.local['backdrop.customTiled'];
+  assert.ok(stored?.startsWith('data:image/png;base64,'), 'should store a PNG data URL');
+  assert.equal(
+    Buffer.from(stored.split(',')[1], 'base64').toString(),
+    payload,
+    'the stored image should round-trip back to the uploaded bytes',
+  );
+
   assert.equal(env.sync['backdrop.image'], 'custom-tiled', 'sync should hold only the sentinel');
   assert.ok(
     !Object.values(env.sync).some((v) => typeof v === 'string' && v.startsWith('data:')),
@@ -67,7 +68,7 @@ test('a custom backdrop upload goes to the local tier, never to sync', async () 
   );
   assert.match(document.body.style.backgroundImage, /data:image\/png/);
   assert.equal(document.body.style.backgroundRepeat, 'repeat');
-  assert.equal(document.querySelector('.alert-error'), null, 'upload should not error');
+  assert.equal(document.querySelector('[data-toast-level="error"]'), null, 'upload should not error');
 });
 
 test('uploads are read lazily, only when selected', async () => {
@@ -101,7 +102,7 @@ test('exceeding the sync quota surfaces a toast instead of failing silently', as
 
   await set(field(window, 'welcomeText', 'text'), 'x'.repeat(200), 'input');
 
-  const toast = window.document.querySelector('.alert-error');
+  const toast = window.document.querySelector('[data-toast-level="error"]');
   assert.ok(toast, 'a rejected write should be reported');
   assert.match(toast.textContent, /storage/i);
   assert.ok(window.document.body.classList.contains('loaded'), 'page should stay usable');

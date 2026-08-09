@@ -40,8 +40,21 @@ function listFiles(dir, base = dir) {
   });
 }
 
+/**
+ * The release version, from manifest.json.
+ *
+ * package.json has to agree, so that `bun install` and the published extension
+ * never disagree about what this is. Enforced rather than documented, because a
+ * convention nothing checks is one that drifts.
+ */
 function readVersion(root) {
-  return JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf-8')).version;
+  const read = (file) => JSON.parse(fs.readFileSync(path.join(root, file), 'utf-8')).version;
+  const manifest = read('manifest.json');
+  const pkg = read('package.json');
+  if (manifest !== pkg) {
+    throw new Error(`Version mismatch: manifest.json is ${manifest}, package.json is ${pkg}`);
+  }
+  return manifest;
 }
 
 module.exports = { buildCss, copyTree, listFiles, readVersion };

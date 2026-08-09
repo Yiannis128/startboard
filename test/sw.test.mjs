@@ -4,6 +4,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
 import { ROOT } from './harness.mjs';
+import { createRequire } from 'node:module';
+
+// The build stamps the manifest version into the worker's cache name, so read
+// it from the same place the build does rather than hard-coding it.
+const { readVersion } = createRequire(import.meta.url)('../scripts/lib.js');
+const VERSION = readVersion(ROOT);
 
 const BUILT_SW = path.join(ROOT, 'dist', 'pwa', 'sw.js');
 
@@ -42,7 +48,7 @@ function loadWorker() {
     },
     caches: {
       open: async () => cache,
-      keys: async () => ['startboard-v0.0.1', 'startboard-v0.1.1'],
+      keys: async () => ['startboard-v0.0.0-old', `startboard-v${VERSION}`],
       delete: async (name) => {
         deleted.push(name);
         return true;
@@ -56,8 +62,6 @@ function loadWorker() {
     },
     Response,
     URL,
-    Promise,
-    console,
   };
 
   vm.createContext(sandbox);
@@ -83,7 +87,7 @@ function loadWorker() {
   };
 
   return {
-    listeners, store, fetched, deleted, dispatch, run,
+    store, fetched, deleted, dispatch, run,
     goOffline: () => {
       networkFails = true;
     },
@@ -99,10 +103,24 @@ test('precaches the app shell but not bulk assets', async () => {
   assert.ok(worker.store.has('./output.css'));
   assert.ok(!worker.store.has('./sw.js'), 'the worker should not precache itself');
 
-  const heavy = [...worker.store.keys()].filter((key) =>
-    ['pexels-photo', 'flower-garden', 'ssha-kolorado', 'G9w1XU'].some((n) => key.includes(n)),
-  );
-  assert.deepEqual(heavy, [], 'multi-megabyte backdrops must not be in the install payload');
+  // The rule, rather than a list of today's filenames: code and markup at any
+  // size, everything else only when small.
+  const SHELL_TYPES = ['.html', '.css', '.js', '.webmanifest'];
+  const LIMIT = 64 * 1024;
+  const sizeOf = (entry) => fs.statSync(path.join(ROOT, 'dist', 'pwa', entry.slice(2))).size;
+
+  const oversized = [...worker.store.keys()]
+    .filter((entry) => entry !== './' && !SHELL_TYPES.includes(path.extname(entry)))
+    .filter((entry) => sizeOf(entry) > LIMIT);
+  assert.deepEqual(oversized, [], 'no bulk asset belongs in the install payload');
+
+  // And the rule actually bites: something in the build was left out.
+  const built = fs
+    .readdirSync(path.join(ROOT, 'dist', 'pwa', 'img', 'backdrop'), { withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => `./img/backdrop/${entry.name}`);
+  const excluded = built.filter((entry) => sizeOf(entry) > LIMIT && !worker.store.has(entry));
+  assert.ok(excluded.length > 0, 'expected at least one oversized asset to be excluded');
 });
 
 test('leaves cross-origin requests alone', async () => {
@@ -142,6 +160,6 @@ test('drops caches from older versions on activate', async () => {
   const worker = loadWorker();
   await worker.run('activate');
 
-  assert.ok(worker.deleted.includes('startboard-v0.0.1'), 'stale cache should be dropped');
-  assert.ok(!worker.deleted.includes('startboard-v0.1.1'), 'current cache should be kept');
+  assert.ok(worker.deleted.includes('startboard-v0.0.0-old'), 'stale cache should be dropped');
+  assert.ok(!worker.deleted.includes(`startboard-v${VERSION}`), 'current cache should be kept');
 });

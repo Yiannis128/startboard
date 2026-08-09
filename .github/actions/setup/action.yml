@@ -1,0 +1,22 @@
+name: Set up Bun
+description: Installs Bun and restores dependencies from the lockfile.
+
+# Checkout stays in the caller: a local action cannot be resolved until the
+# repository is already on disk.
+runs:
+  using: composite
+  steps:
+    - uses: oven-sh/setup-bun@v2
+      with:
+        bun-version: latest
+
+    # setup-bun caches only the Bun binary, so without this every job
+    # re-downloads every dependency.
+    - uses: actions/cache@v6
+      with:
+        path: ~/.bun/install/cache
+        key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+        restore-keys: bun-${{ runner.os }}-
+
+    - run: bun install --frozen-lockfile
+      shell: bash

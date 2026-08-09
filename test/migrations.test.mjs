@@ -15,7 +15,7 @@ const V1 = {
 
 test('v1 settings migrate forward and still apply', async () => {
   const window = await boot({ settings: structuredClone(V1) });
-  const after = settings(window);
+  const after = await settings();
 
   assert.equal(after.__version, 2);
   assert.equal(after['theme.mode'], 'dark');
@@ -25,7 +25,8 @@ test('v1 settings migrate forward and still apply', async () => {
   assert.equal(after['backdrop.image'], 'custom-tiled', 'the data URL should become a sentinel');
   assert.equal(after['backdrop.imageRepeat'], undefined, 'tiling is derived now');
 
-  const moved = window.localStorage.getItem('startboard_local_backdrop.customTiled');
+  const { createStorage } = await import(`${SRC}/core/storage.js`);
+  const moved = await createStorage().loadLocal('backdrop.customTiled');
   assert.match(moved, /base64/, 'the upload should move to the local tier');
 
   assert.equal(view(window, 'welcomeText').querySelector('h1').textContent, 'Legacy');
@@ -42,8 +43,8 @@ test('migrating is idempotent', async () => {
 });
 
 test('a fresh install starts at the current version', async () => {
-  const window = await boot();
-  assert.equal(settings(window).__version, 2);
+  await boot();
+  assert.equal((await settings()).__version, 2);
 });
 
 test('import replaces settings rather than merging them', async () => {
@@ -56,7 +57,7 @@ test('import replaces settings rather than merging them', async () => {
   await config.load();
   await config.import({ __version: 2, 'welcomeText.text': 'After' });
 
-  const stored = JSON.parse(globalThis.localStorage.getItem('startboard_config'));
+  const stored = await settings();
   assert.equal(stored['welcomeText.text'], 'After');
   assert.equal(stored['time.show'], undefined, 'keys absent from the import should be dropped');
 

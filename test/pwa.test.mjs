@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { boot, set, settings, field, option, view, isHidden } from './harness.mjs';
+import { boot, set, settled, settings, field, option, view, isHidden } from './harness.mjs';
+
+const WIDGETS = ['theme', 'welcomeText', 'time', 'search', 'shortcuts', 'backdrop'];
 
 test('mounts every widget and reveals the page', async () => {
   const window = await boot();
@@ -9,12 +11,12 @@ test('mounts every widget and reveals the page', async () => {
   assert.ok(document.body.classList.contains('loaded'), 'page stayed hidden');
   assert.deepEqual(
     [...document.querySelectorAll('#settings [data-widget]')].map((s) => s.dataset.widget),
-    ['theme', 'welcomeText', 'time', 'search', 'shortcuts', 'backdrop'],
+    WIDGETS,
   );
-  assert.equal(document.querySelectorAll('#view [data-widget-root]').length, 6);
+  assert.equal(document.querySelectorAll('#view [data-widget-root]').length, WIDGETS.length);
   assert.ok(document.getElementById('additionalSettings').classList.contains('hidden'),
     'extension-only button should be hidden in the PWA');
-  assert.equal(settings(window).__version, 2);
+  assert.equal((await settings()).__version, 2);
 });
 
 test('welcome text follows the input and falls back when empty', async () => {
@@ -26,7 +28,7 @@ test('welcome text follows the input and falls back when empty', async () => {
   const input = field(window, 'welcomeText', 'text');
   await set(input, 'Hello there', 'input');
   assert.equal(heading.textContent, 'Hello there');
-  assert.equal(settings(window)['welcomeText.text'], 'Hello there');
+  assert.equal((await settings())['welcomeText.text'], 'Hello there');
 
   await set(input, '', 'input');
   assert.equal(heading.textContent, 'Welcome');
@@ -58,23 +60,42 @@ test('time renders each style and honours seconds and 12-hour', async () => {
 });
 
 test('time clears its interval when hidden', async () => {
-  const window = await boot();
-  await set(field(window, 'time', 'show'), true);
-  const root = view(window, 'time');
-  await set(field(window, 'time', 'show'), false);
+  // Counting live intervals rather than waiting out a tick: the wall-clock
+  // version had to sleep past the clock's 1s period to mean anything.
+  const live = new Set();
+  const [realSet, realClear] = [globalThis.setInterval, globalThis.clearInterval];
+  globalThis.setInterval = (...args) => {
+    const id = realSet(...args);
+    live.add(id);
+    return id;
+  };
+  globalThis.clearInterval = (id) => {
+    live.delete(id);
+    return realClear(id);
+  };
 
-  const before = root.textContent;
-  await new Promise((resolve) => setTimeout(resolve, 1100));
-  assert.equal(root.textContent, before, 'a stopped clock should not keep ticking');
+  try {
+    const window = await boot();
+    assert.equal(live.size, 0, 'a hidden clock should not be ticking');
+
+    await set(field(window, 'time', 'show'), true);
+    assert.equal(live.size, 1, 'showing the clock starts exactly one interval');
+
+    await set(field(window, 'time', 'show'), false);
+    assert.equal(live.size, 0, 'hiding the clock clears it');
+  } finally {
+    globalThis.setInterval = realSet;
+    globalThis.clearInterval = realClear;
+  }
 });
 
 test('shortcuts render, and unsafe URLs never become links', async () => {
   const window = await boot();
-  const grid = view(window, 'shortcuts').querySelector('[data-grid]');
+  const root = view(window, 'shortcuts');
+  const grid = root.querySelector('[data-grid]');
   assert.equal(grid.children.length, 11, '10 defaults plus the add button');
   assert.equal(grid.children[0].href, 'https://www.google.com/');
 
-  const root = view(window, 'shortcuts');
   const title = root.querySelector('[data-title]');
   const url = root.querySelector('[data-url]');
   const error = root.querySelector('[data-dialog-error]');
@@ -82,16 +103,16 @@ test('shortcuts render, and unsafe URLs never become links', async () => {
   title.value = 'Evil';
   url.value = 'javascript:alert(1)';
   root.querySelector('[data-save]').click();
-  await new Promise((resolve) => setTimeout(resolve, 10));
+  await settled();
   assert.ok(!error.classList.contains('hidden'), 'javascript: URL should be rejected');
   assert.equal(grid.children.length, 11, 'rejected shortcut should not be added');
 
   title.value = 'Bare Domain';
   url.value = 'example.com';
   root.querySelector('[data-save]').click();
-  await new Promise((resolve) => setTimeout(resolve, 10));
+  await settled();
   assert.equal(grid.children.length, 12);
-  assert.equal(settings(window)['shortcuts.items'].at(-1).url, 'https://example.com/');
+  assert.equal((await settings())['shortcuts.items'].at(-1).url, 'https://example.com/');
 });
 
 test('a stored javascript: shortcut is filtered out on render', async () => {
@@ -104,7 +125,7 @@ test('a stored javascript: shortcut is filtered out on render', async () => {
       ],
     },
   });
-  const cards = window.document.querySelectorAll('[data-widget-root="shortcuts"] [data-grid] a');
+  const cards = view(window, 'shortcuts').querySelectorAll('[data-grid] a');
   assert.equal(cards.length, 1, 'only the safe shortcut should render');
   assert.equal(cards[0].href, 'https://good.example/');
 });
@@ -127,11 +148,11 @@ test('an invalid custom search URL is reported and not saved', async () => {
 
   await set(url, 'https://example.com/search?query=nothing');
   assert.ok(!error.classList.contains('hidden'), 'missing %s should be reported');
-  assert.equal(settings(window)['search.customUrl'], undefined, 'invalid URL must not persist');
+  assert.equal((await settings())['search.customUrl'], undefined, 'invalid URL must not persist');
 
   await set(url, 'https://example.com/search?q=%s');
   assert.ok(error.classList.contains('hidden'));
-  assert.equal(settings(window)['search.customUrl'], 'https://example.com/search?q=%s');
+  assert.equal((await settings())['search.customUrl'], 'https://example.com/search?q=%s');
 });
 
 test('backdrop paints each mode and derives tiling from the image', async () => {
@@ -148,13 +169,22 @@ test('backdrop paints each mode and derives tiling from the image', async () => 
   await set(option(window, 'backdrop', 'mode', 'image'), true);
   assert.equal(style.backgroundImage, '', 'no image selected yet');
 
-  await set(option(window, 'backdrop', 'image', 'backdrop/repeat/stone_texture_AGF81.jpg'), true);
-  assert.match(style.backgroundImage, /stone_texture/);
+  // Taken from the rendered choices, so swapping a wallpaper stays a content
+  // change rather than a test failure.
+  const images = [...window.document.querySelectorAll('[data-widget="backdrop"] [data-field="image"]')]
+    .map((radio) => radio.value)
+    .filter((value) => !value.startsWith('custom-'));
+  const tiled = images.find((value) => value.includes('/repeat/'));
+  const fitted = images.find((value) => !value.includes('/repeat/'));
+  assert.ok(tiled && fitted, 'expected both a tiled and a fitted backdrop option');
+
+  await set(option(window, 'backdrop', 'image', tiled), true);
   assert.equal(style.backgroundRepeat, 'repeat');
-  assert.equal(settings(window)['backdrop.imageRepeat'], undefined,
+  assert.equal(style.backgroundSize, 'auto');
+  assert.equal((await settings())['backdrop.imageRepeat'], undefined,
     'tiling is derived from the image, not stored');
 
-  await set(option(window, 'backdrop', 'image', 'backdrop/pexels-photo-449011.jpeg'), true);
+  await set(option(window, 'backdrop', 'image', fitted), true);
   assert.equal(style.backgroundSize, 'cover');
   assert.equal(style.backgroundRepeat, 'no-repeat');
 });

@@ -4,26 +4,22 @@ on:
   release:
     types: [created]
 
-# Publishing to the Chrome Web Store needs four repository secrets:
-#
-#   CHROME_EXTENSION_ID    the item id from the Web Store dashboard URL
-#   CHROME_CLIENT_ID       OAuth client id  (Google Cloud console)
-#   CHROME_CLIENT_SECRET   OAuth client secret
-#   CHROME_REFRESH_TOKEN   refresh token for that client
-#
-# See https://developer.chrome.com/docs/webstore/using-api. Without them the
-# publish job fails loudly rather than reporting a release that never shipped.
+# Publishing needs four repository secrets: CHROME_EXTENSION_ID,
+# CHROME_CLIENT_ID, CHROME_CLIENT_SECRET, CHROME_REFRESH_TOKEN.
+# See scripts/publish-webstore.sh.
 
 permissions:
   contents: read
 
 jobs:
+  # Builds and tests, so a release cannot ship code the suite rejects.
   build:
     uses: ./.github/workflows/build.yml
 
   publish:
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write # to attach the build to the release
     steps:
@@ -37,18 +33,19 @@ jobs:
 
       # A release tagged v0.2.0 built from a manifest still saying 0.1.1 would
       # publish a mislabelled extension, so refuse rather than guess.
-      - name: Check the tag matches manifest.json
+      - name: Check the tag matches the built version
         env:
           BUILT: ${{ needs.build.outputs.version }}
           TAG: ${{ github.event.release.tag_name }}
         run: |
           if [ "${TAG#v}" != "$BUILT" ]; then
-            echo "::error::Release tag $TAG does not match manifest.json version $BUILT."
-            echo "::error::Bump \"version\" in manifest.json and package.json, then re-tag."
+            echo "::error::Release tag $TAG does not match version $BUILT."
+            echo "::error::Bump manifest.json and package.json together, then re-tag."
             exit 1
           fi
           echo "Publishing version $BUILT"
 
+      # Before the Web Store, so a publish failure still leaves a usable build.
       - name: Attach the build to the release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -57,52 +54,8 @@ jobs:
 
       - name: Publish to the Chrome Web Store
         env:
-          EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
-          CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
-          CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
-          REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
-        run: |
-          set -euo pipefail
-
-          for name in EXTENSION_ID CLIENT_ID CLIENT_SECRET REFRESH_TOKEN; do
-            if [ -z "${!name}" ]; then
-              echo "::error::Secret CHROME_$name is not set; cannot publish to the Web Store."
-              exit 1
-            fi
-          done
-
-          token=$(curl -sS -X POST https://oauth2.googleapis.com/token \
-            -d "client_id=$CLIENT_ID" \
-            -d "client_secret=$CLIENT_SECRET" \
-            -d "refresh_token=$REFRESH_TOKEN" \
-            -d grant_type=refresh_token | jq -r '.access_token // empty')
-          if [ -z "$token" ]; then
-            echo "::error::Could not exchange the refresh token for an access token."
-            exit 1
-          fi
-
-          # The upload and publish endpoints answer 200 with a failure payload,
-          # so the response body decides the outcome, not the status code.
-          upload=$(curl -sS -X PUT \
-            -H "Authorization: Bearer $token" \
-            -H "x-goog-api-version: 2" \
-            -T startboard-extension.zip \
-            "https://www.googleapis.com/upload/chromewebstore/v1.1/items/$EXTENSION_ID")
-          echo "Upload response: $upload"
-          if [ "$(echo "$upload" | jq -r '.uploadState // empty')" != "SUCCESS" ]; then
-            echo "::error::Web Store upload failed."
-            exit 1
-          fi
-
-          publish=$(curl -sS -X POST \
-            -H "Authorization: Bearer $token" \
-            -H "x-goog-api-version: 2" \
-            -H "Content-Length: 0" \
-            "https://www.googleapis.com/chromewebstore/v1.1/items/$EXTENSION_ID/publish")
-          echo "Publish response: $publish"
-          if echo "$publish" | jq -e '.error // empty' >/dev/null; then
-            echo "::error::Web Store publish failed."
-            exit 1
-          fi
-
-          echo "Published. Google review can take several days before it goes live."
+          CHROME_EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
+          CHROME_CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
+          CHROME_CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
+          CHROME_REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
+        run: ./scripts/publish-webstore.sh startboard-extension.zip

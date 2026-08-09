@@ -12,10 +12,12 @@ let bootCount = 0;
  * Evaluates the real app against a fresh jsdom document.
  *
  * The app is plain ES modules with no bundler, so it is loaded by importing
- * src/app.js with the browser globals installed. The import specifier carries
- * a counter because a module graph is only evaluated once per URL.
+ * src/app.js with the browser globals installed. The counter in the specifier
+ * re-evaluates app.js, but its imports under src/core and src/widgets keep
+ * their module state for the life of the process - which is why
+ * scripts/test.js gives each test file its own process.
  */
-export async function boot({ chrome, settings, localData } = {}) {
+export async function boot({ chrome, settings } = {}) {
   const html = fs.readFileSync(path.join(SRC, 'index.html'), 'utf-8');
   const dom = new JSDOM(html, { url: 'https://example.test/', pretendToBeVisual: true });
   const { window } = dom;
@@ -30,13 +32,12 @@ export async function boot({ chrome, settings, localData } = {}) {
   window.matchMedia ??= () => ({ matches: false, addEventListener() {} });
 
   for (const key of [
-    'window', 'document', 'localStorage', 'CustomEvent', 'Event', 'FileReader', 'File',
-    'Blob', 'URL', 'CSS', 'HTMLElement', 'Node', 'getComputedStyle', 'matchMedia',
+    'window', 'document', 'localStorage', 'CustomEvent', 'Event', 'FileReader',
+    'Blob', 'URL', 'CSS', 'matchMedia',
   ]) {
     globalThis[key] = window[key];
   }
   globalThis.navigator = window.navigator;
-  globalThis.requestIdleCallback = (fn) => setTimeout(fn, 0);
   globalThis.fetch = async () => {
     throw new Error('offline');
   };
@@ -44,9 +45,11 @@ export async function boot({ chrome, settings, localData } = {}) {
   if (chrome) globalThis.chrome = chrome;
   else delete globalThis.chrome;
 
-  if (settings) window.localStorage.setItem('startboard_config', JSON.stringify(settings));
-  for (const [key, value] of Object.entries(localData ?? {})) {
-    window.localStorage.setItem(`startboard_local_${key}`, JSON.stringify(value));
+  // Seeded through the storage layer rather than by writing its keys directly,
+  // so tests do not pin how settings are serialised.
+  if (settings) {
+    const { createStorage } = await import(`${SRC}/core/storage.js`);
+    await createStorage().replaceAll(settings);
   }
 
   await import(`${SRC}/app.js?boot=${++bootCount}`);
@@ -59,7 +62,11 @@ export const fire = (element, type) =>
 
 export const settled = (ms = 20) => new Promise((resolve) => setTimeout(resolve, ms));
 
-export const settings = (window) => JSON.parse(window.localStorage.getItem('startboard_config'));
+/** Everything the app has persisted, read back through the storage layer. */
+export async function settings() {
+  const { createStorage } = await import(`${SRC}/core/storage.js`);
+  return createStorage().load();
+}
 
 export const field = (window, widget, name) =>
   window.document.querySelector(`[data-widget="${widget}"] [data-field="${name}"]`);
@@ -74,7 +81,6 @@ export const view = (window, widget) =>
 
 export const isHidden = (element) => element.closest('[data-field-wrap]').classList.contains('hidden');
 
-/** Sets a control and dispatches the event the framework binds to. */
 export async function set(element, value, event = 'change') {
   if (element.type === 'checkbox' || element.type === 'radio') element.checked = value;
   else element.value = value;
@@ -127,7 +133,6 @@ export function fakeChrome({ sync = {}, local = {}, syncQuotaBytes = 8192 } = {}
           callback();
         },
       },
-      tabs: { update() {} },
     },
     sync,
     local,

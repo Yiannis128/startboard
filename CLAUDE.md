@@ -30,12 +30,20 @@ Serve the PWA over HTTP to try it — `python3 -m http.server` from inside
 
 ## Tests
 
-`bun run test` builds the PWA and runs `test/`; `bun run test:only` skips the
+`bun run test` builds the PWA and runs the suite; `bun run test:only` skips the
 build when `dist/pwa` is already current. The service worker suite reads the
 *built* `dist/pwa/sw.js`, so it needs that build to exist.
 
-Tests are written against `node:test`, but run them with `bun test` — on a
-machine where `node` is a bun shim, `node --test` does not work.
+Tests are written against `node:test` but run under bun — on a machine where
+`node` is a bun shim, `node --test` does not work.
+
+**`scripts/test.js` runs each file in its own process, and that is not
+optional.** `bun test` evaluates every file in one process; these tests each
+build a jsdom window and re-import the app, and that state accumulates until the
+run stops exiting — `pwa + extension + migrations` together hang reliably while
+any one alone passes. A process per file is also the isolation the tests assume:
+module-level state in `src/` starts fresh and one file's stubs cannot leak into
+the next. Do not "simplify" this back to a bare `bun test`.
 
 - `test/harness.mjs` — boots the real app in jsdom with browser globals
   installed, plus `fakeChrome()`, a `chrome.*` stub that enforces the real 8KB
@@ -225,27 +233,39 @@ local storage.
 
 ## Workflows
 
-- `test.yml` — pull requests and master: builds both targets, runs the suite
-- `build.yml` — master, and callable via `workflow_call`; uploads both builds as
-  artifacts and exposes the manifest version as an output
+- `test.yml` — pull requests only: builds both targets, runs the suite
+- `build.yml` — master, and callable via `workflow_call`; builds, runs the suite,
+  uploads the extension zip, exposes the version as an output
 - `deploy-pwa.yml` — master: deploys `dist/pwa` to GitHub Pages
 - `release.yml` — on release creation: calls `build.yml`, attaches the zip to the
   release, publishes to the Chrome Web Store
 
+`test.yml` stays off master because `build.yml` already runs the same suite
+there; both would build the same commit twice. `build.yml` runs the tests so
+that `release.yml`, which calls it, cannot publish code the suite rejects.
+
+Checkout, Bun, the dependency cache, and `bun install` live in the composite
+action at `.github/actions/setup`. Checkout itself has to stay in each caller —
+a local action cannot be resolved before the repository is on disk.
+
 ## Releasing
 
-`manifest.json` is the single source of version truth — both builds read it, and
-`package.json` should be kept in step. Bump it, commit, then create a release
-tagged `v<version>`. `release.yml` refuses to publish when the tag and the
-manifest disagree, so a forgotten bump fails the release instead of shipping a
-mislabelled extension.
+`manifest.json` is the single source of version truth, and `readVersion` in
+`scripts/lib.js` is its only reader — CI asks `bun scripts/version.js` rather
+than parsing the file itself. `readVersion` fails when `package.json` disagrees,
+so the two cannot drift. Bump both, commit, then create a release tagged
+`v<version>`; `release.yml` refuses to publish when the tag disagrees with the
+build, so a forgotten bump fails the release instead of shipping a mislabelled
+extension.
 
 Publishing needs four repository secrets: `CHROME_EXTENSION_ID`,
 `CHROME_CLIENT_ID`, `CHROME_CLIENT_SECRET`, `CHROME_REFRESH_TOKEN` (see
-https://developer.chrome.com/docs/webstore/using-api). The workflow talks to the
-Web Store API with `curl` rather than a third-party action, to keep publish
-credentials out of code this repo does not control. Both endpoints answer 200
-with a failure payload, so the job inspects the response body, not the status.
+https://developer.chrome.com/docs/webstore/using-api). It lives in
+`scripts/publish-webstore.sh`, not inline in the workflow, so it gets shellcheck
+and can be run by hand after a failed release. It uses `curl` rather than a
+third-party action to keep publish credentials out of code this repo does not
+control, and inspects the response body rather than the status code — both Web
+Store endpoints answer 200 with a failure payload.
 
 The GitHub release asset is attached before the Web Store step, so a Web Store
 failure still leaves a downloadable build on the release.
