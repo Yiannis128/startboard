@@ -7,83 +7,20 @@
   <link rel="icon" type="image/png" href="img/icon.png">
   <link rel="stylesheet" href="output.css">
 </head>
-<body class="min-h-screen flex flex-col items-center justify-center bg-base-200 p-8">
-  <div class="text-center mb-4 max-w-4xl w-full">
-    <h1 id="welcomeText" class="text-4xl font-bold text-base-content select-none break-words" style="text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5), -1px -1px 0 rgba(0, 0, 0, 0.3), 1px -1px 0 rgba(0, 0, 0, 0.3), -1px 1px 0 rgba(0, 0, 0, 0.3), 1px 1px 0 rgba(0, 0, 0, 0.3);">Welcome</h1>
-  </div>
-
-  <div class="text-center mb-8">
-    <div id="timeDisplay" class="text-2xl text-base-content opacity-70 select-none hidden"></div>
-  </div>
-
-  <!-- Search Bar -->
-  <div id="searchContainer" class="w-full max-w-xl mb-8 hidden">
-    <div class="join w-full">
-      <input type="text" id="searchInput"
-             class="input input-bordered join-item w-full"
-             placeholder="Search the web..." autocomplete="off" />
-      <button id="searchButton" class="btn btn-primary join-item">
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-        </svg>
-      </button>
-    </div>
-    <div id="searchError" class="text-error text-sm mt-2 hidden"></div>
-  </div>
-
-  <!-- Shortcuts Grid -->
-  <div id="shortcutsContainer" class="w-full max-w-4xl hidden">
-    <div id="shortcutsGrid" class="grid grid-cols-3 min-[480px]:grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-2 min-[480px]:gap-3 md:gap-4"></div>
-  </div>
-
-  <!-- Shortcut Prototype (hidden) -->
-  <a id="shortcutPrototype" class="card bg-base-100 shadow-md hover:shadow-lg transition-shadow cursor-move p-2 flex flex-col items-center justify-center gap-1 text-center aspect-square w-full cursor-pointer hidden">
-    <img class="shortcut-icon w-5 h-5 min-[480px]:w-6 min-[480px]:h-6" alt="">
-    <span class="shortcut-title text-xs font-medium"></span>
-  </a>
-
-  <!-- Add Shortcut Button Prototype (hidden) -->
-  <button id="addShortcutPrototype" type="button" class="card bg-base-100 shadow-md hover:shadow-lg transition-shadow cursor-pointer p-2 flex flex-col items-center justify-center gap-1 text-center aspect-square w-full hidden">
-    <svg class="w-5 h-5 min-[480px]:w-6 min-[480px]:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
-    </svg>
-  </button>
-
-  <!-- Add Shortcut Dialog -->
-  <dialog id="addShortcutDialog" class="modal">
-    <div class="modal-box">
-      <h3 id="dialogTitle" class="font-bold text-lg mb-4">Add Shortcut</h3>
-      <form method="dialog">
-        <div class="form-control mb-4">
-          <label class="label">
-            <span class="label-text">Title</span>
-          </label>
-          <input type="text" id="shortcutTitle" class="input input-bordered" required />
-        </div>
-        <div class="form-control mb-4">
-          <label class="label">
-            <span class="label-text">URL</span>
-          </label>
-          <input type="url" id="shortcutUrl" class="input input-bordered" required />
-        </div>
-        <div class="modal-action">
-          <button type="button" id="saveShortcut" class="btn btn-primary">Save</button>
-          <button type="button" id="cancelShortcut" class="btn">Cancel</button>
-        </div>
-      </form>
-    </div>
-  </dialog>
+<body class="min-h-screen bg-base-200">
+  <!-- Widgets render themselves into here, in registry order. -->
+  <main id="view" class="min-h-screen w-full flex flex-col items-center justify-center p-8"></main>
 
   <!-- Donate button -->
-  <a href="https://github.com/sponsors/Yiannis128" class="btn btn-accent fixed bottom-4 right-20">
+  <a href="https://github.com/sponsors/Yiannis128" class="btn btn-accent fixed bottom-4 right-20"
+     aria-label="Donate via GitHub Sponsors">
     <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
       <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
     </svg>
   </a>
 
   <!-- Open sidebar button -->
-  <button id="openSidebar" class="btn btn-primary fixed bottom-4 right-4">
+  <button id="openSidebar" class="btn btn-primary fixed bottom-4 right-4" aria-label="Open settings">
     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
@@ -94,37 +31,12 @@
   <div id="sidebar" class="fixed top-0 right-0 h-full w-80 bg-base-100 transform translate-x-full transition-transform duration-300 ease-in-out z-50 overflow-y-auto">
     <div class="sticky top-0 bg-base-100 z-10 p-4 flex items-center justify-between border-b border-base-300">
       <h2 class="text-xl font-bold">Settings</h2>
-      <button id="closeSidebar" class="btn btn-sm btn-circle btn-ghost">
-        ✕
-      </button>
+      <button id="closeSidebar" class="btn btn-sm btn-circle btn-ghost" aria-label="Close settings">✕</button>
     </div>
     <div class="p-4">
+      <!-- One section per widget, built from its schema. -->
+      <div id="settings"></div>
 
-      <!-- Color Mode Section -->
-      <div class="mb-6">
-        <h3 class="text-sm font-semibold mb-3">Color Mode</h3>
-        <div class="space-y-2">
-          <label class="flex items-center cursor-pointer">
-            <input type="radio" name="colorMode" value="light" class="radio radio-primary" />
-            <span class="ml-2">Light</span>
-          </label>
-          <label class="flex items-center cursor-pointer">
-            <input type="radio" name="colorMode" value="dark" class="radio radio-primary" />
-            <span class="ml-2">Dark</span>
-          </label>
-          <label class="flex items-center cursor-pointer">
-            <input type="radio" name="colorMode" value="system" class="radio radio-primary" />
-            <span class="ml-2">System</span>
-          </label>
-        </div>
-
-        <!-- Theme colors container -->
-        <div id="themeColorsContainer" class="mt-4"></div>
-      </div>
-
-      <div id="settingsContainer"></div>
-
-      <!-- Export/Import Section -->
       <div class="mb-6 mt-8 pt-6 border-t border-base-300">
         <h3 class="text-sm font-semibold mb-3">Configuration</h3>
         <div class="space-y-2">
@@ -144,7 +56,6 @@
         </div>
       </div>
 
-      <!-- Additional Buttons -->
       <div class="mb-6 space-y-2">
         <a href="https://github.com/sponsors/Yiannis128" class="btn btn-ghost w-full">
           <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
@@ -166,41 +77,21 @@
         </button>
       </div>
 
-      <!-- Version -->
       <div class="text-center text-xs opacity-50 pb-4">
         <span id="versionDisplay"></span>
       </div>
 
-      <!-- Attribution -->
       <p class="text-xs opacity-50 mt-6 px-4">
-        Startboard relies on <a href="https://helium.computer/" target="_blank" class="link">Helium</a> services for Bangs.
+        Startboard relies on <a href="https://helium.computer/" target="_blank" rel="noopener" class="link">Helium</a> services for Bangs.
         Startboard is not affiliated with Helium in any way shape or form.
-        <a href="https://github.com/imputnet/helium-services" target="_blank" class="link">GitHub</a>
+        <a href="https://github.com/imputnet/helium-services" target="_blank" rel="noopener" class="link">GitHub</a>
       </p>
     </div>
   </div>
 
-  <!-- Overlay (transparent, for click-to-close) -->
+  <!-- Transparent click-to-close layer behind the sidebar -->
   <div id="overlay" class="fixed inset-0 hidden z-40"></div>
 
-  <!-- Context Menu -->
-  <div id="contextMenu" class="hidden fixed bg-base-100 shadow-lg rounded-lg border border-base-300 z-50">
-    <ul class="menu p-2 w-40">
-      <li><button id="editShortcut" class="text-sm">Edit</button></li>
-      <li><button id="deleteShortcut" class="text-sm text-error">Delete</button></li>
-    </ul>
-  </div>
-
-  <script src="storage/StorageAdapter.js"></script>
-  <script src="runtime/RuntimeAdapter.js"></script>
-  <script src="config.js"></script>
-  <script src="widgets/StartWidget.js"></script>
-  <script src="widgets/WelcomeTextWidget.js"></script>
-  <script src="widgets/TimeWidget.js"></script>
-  <script src="widgets/SearchWidget.js"></script>
-  <script src="widgets/ShortcutsWidget.js"></script>
-  <script src="widgets/ThemeWidget.js"></script>
-  <script src="widgets/BackdropWidget.js"></script>
-  <script src="app.js"></script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>

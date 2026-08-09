@@ -1,7 +1,7 @@
 @import "tailwindcss";
 @plugin "daisyui";
 
-/* Hide body initially to prevent flash of unstyled content */
+/* Hidden until app.js has applied the theme and backdrop, to avoid a flash. */
 body {
   opacity: 0;
   transition: opacity 0.2s ease-in;
@@ -9,4 +9,14 @@ body {
 
 body.loaded {
   opacity: 1;
+}
+
+/* Keeps text readable against arbitrary backdrop images. */
+.over-backdrop {
+  text-shadow:
+    2px 2px 4px rgb(0 0 0 / 0.5),
+    -1px -1px 0 rgb(0 0 0 / 0.3),
+    1px -1px 0 rgb(0 0 0 / 0.3),
+    -1px 1px 0 rgb(0 0 0 / 0.3),
+    1px 1px 0 rgb(0 0 0 / 0.3);
 }

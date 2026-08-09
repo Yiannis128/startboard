@@ -1,177 +1,202 @@
-class ShortcutsManager {
-  constructor() {
-    this.container = null;
-    this.grid = null;
-    this.prototype = null;
-    this.addShortcutPrototype = null;
-    this.dialog = null;
-    this.dialogTitle = null;
-    this.titleInput = null;
-    this.urlInput = null;
-    this.contextMenu = null;
-    this.draggedElement = null;
+import { Widget } from '../core/Widget.js';
+import { safeUrl } from '../core/url.js';
+import { label } from '../core/fields.js';
+import { setError } from '../core/notify.js';
+
+const MAX_SHORTCUTS = 16;
+
+const TILE =
+  'card bg-base-100 shadow-md hover:shadow-lg transition-shadow p-2 flex flex-col ' +
+  'items-center justify-center gap-1 text-center aspect-square w-full';
+
+const DEFAULTS = [
+  ['Google', 'https://www.google.com'],
+  ['YouTube', 'https://www.youtube.com'],
+  ['Facebook', 'https://www.facebook.com'],
+  ['Instagram', 'https://www.instagram.com'],
+  ['ChatGPT', 'https://chatgpt.com'],
+  ['X', 'https://x.com'],
+  ['Financial Times', 'https://www.ft.com'],
+  ['Reddit', 'https://www.reddit.com'],
+  ['GitHub', 'https://github.com/Yiannis128/startboard'],
+  ['Yiannis', 'https://yiannis.info'],
+].map(([title, url]) => ({ title, url }));
+
+const faviconUrl = (url) => {
+  let domain;
+  try {
+    domain = new URL(url).hostname;
+  } catch {
+    domain = url;
+  }
+  return `https://www.google.com/s2/favicons?sz=32&domain=${encodeURIComponent(domain)}`;
+};
+
+export class ShortcutsWidget extends Widget {
+  static id = 'shortcuts';
+  static title = 'Shortcuts';
+
+  static schema = {
+    show: { type: 'boolean', default: true, label: 'Show shortcuts' },
+    items: { type: 'value', default: DEFAULTS },
+  };
+
+  constructor(config) {
+    super(config);
+    this.editingIndex = null;
     this.draggedIndex = null;
-    this.editingIndex = null; // Track which shortcut is being edited
   }
 
-  init(container, grid) {
-    this.container = container;
-    this.grid = grid;
-    this.prototype = document.getElementById('shortcutPrototype');
-    this.addShortcutPrototype = document.getElementById('addShortcutPrototype');
-    this.dialog = document.getElementById('addShortcutDialog');
-    this.dialogTitle = document.getElementById('dialogTitle');
-    this.titleInput = document.getElementById('shortcutTitle');
-    this.urlInput = document.getElementById('shortcutUrl');
-    this.contextMenu = document.getElementById('contextMenu');
+  /** Stored entries, filtered down to ones that are actually safe to link to. */
+  items() {
+    const stored = this.get('items');
+    if (!Array.isArray(stored)) return [];
+    return stored
+      .map((item) => ({ title: String(item?.title ?? ''), url: safeUrl(item?.url) }))
+      .filter((item) => item.title && item.url);
+  }
 
-    // Setup dialog event handlers
-    document.getElementById('saveShortcut').addEventListener('click', () => this.saveShortcut());
-    document.getElementById('cancelShortcut').addEventListener('click', () => this.closeDialog());
+  mount() {
+    this.root.className = 'w-full max-w-4xl';
+    this.root.innerHTML = `
+      <div data-grid class="grid grid-cols-3 min-[480px]:grid-cols-4 sm:grid-cols-5 md:grid-cols-6
+                            lg:grid-cols-8 gap-2 min-[480px]:gap-3 md:gap-4"></div>
 
-    // Setup context menu handlers
-    document.getElementById('editShortcut').addEventListener('click', () => this.handleEdit());
-    document.getElementById('deleteShortcut').addEventListener('click', () => this.handleDelete());
+      <dialog data-dialog class="modal">
+        <div class="modal-box">
+          <h3 data-dialog-title class="font-bold text-lg mb-4">Add Shortcut</h3>
+          <div class="form-control mb-4">
+            ${label('Title')}
+            <input type="text" data-title class="input input-bordered" required />
+          </div>
+          <div class="form-control mb-4">
+            ${label('URL')}
+            <input type="url" data-url class="input input-bordered" required />
+          </div>
+          <div data-dialog-error class="text-error text-sm mb-2 hidden"></div>
+          <div class="modal-action">
+            <button type="button" data-save class="btn btn-primary">Save</button>
+            <button type="button" data-cancel class="btn">Cancel</button>
+          </div>
+        </div>
+      </dialog>
 
-    // Close context menu when clicking anywhere else
-    document.addEventListener('click', (e) => {
-      if (!this.contextMenu.contains(e.target)) {
-        this.hideContextMenu();
-      }
+      <div data-menu class="hidden fixed bg-base-100 shadow-lg rounded-lg border border-base-300 z-50">
+        <ul class="menu p-2 w-40">
+          <li><button type="button" data-edit class="text-sm">Edit</button></li>
+          <li><button type="button" data-delete class="text-sm text-error">Delete</button></li>
+        </ul>
+      </div>`;
+
+    this.grid = this.root.querySelector('[data-grid]');
+    this.dialog = this.root.querySelector('[data-dialog]');
+    this.dialogTitle = this.root.querySelector('[data-dialog-title]');
+    this.dialogError = this.root.querySelector('[data-dialog-error]');
+    this.titleInput = this.root.querySelector('[data-title]');
+    this.urlInput = this.root.querySelector('[data-url]');
+    this.menu = this.root.querySelector('[data-menu]');
+
+    this.root.querySelector('[data-save]').addEventListener('click', () => this.save());
+    this.root.querySelector('[data-cancel]').addEventListener('click', () => this.closeDialog());
+    this.root.querySelector('[data-edit]').addEventListener('click', () => {
+      this.hideMenu();
+      this.openDialog(this.editingIndex);
     });
+    this.root.querySelector('[data-delete]').addEventListener('click', () => this.remove());
+
+    document.addEventListener('click', (event) => {
+      if (!this.menu.contains(event.target)) this.hideMenu();
+    });
+
+    this.grid.addEventListener('dragover', (event) => event.preventDefault());
   }
 
   render() {
-    this.grid.innerHTML = '';
-    const shortcuts = config.shortcuts; // Display all shortcuts
+    const show = this.get('show');
+    this.root.classList.toggle('hidden', !show);
+    // Building up to 17 cards, each with listeners and a favicon request, is
+    // wasted entirely when the grid is not on screen.
+    if (!show) return;
 
-    shortcuts.forEach((shortcut, index) => {
-      // Clone the prototype
-      const card = this.prototype.cloneNode(true);
-      card.id = ''; // Remove the ID from the clone
-      card.classList.remove('hidden'); // Make it visible
-      card.href = shortcut.url;
-      card.draggable = true;
-      card.dataset.index = index;
+    const items = this.items();
+    this.grid.replaceChildren(...items.map((item, index) => this.card(item, index)));
 
-      // Fill in the data
-      const img = card.querySelector('.shortcut-icon');
-      // Extract domain from URL for favicon
-      let domain;
-      try {
-        domain = new URL(shortcut.url).hostname;
-      } catch (e) {
-        domain = shortcut.url;
-      }
-      img.src = `https://www.google.com/s2/favicons?sz=32&domain=${domain}`;
-      img.alt = shortcut.title;
+    if (items.length < MAX_SHORTCUTS) {
+      this.grid.appendChild(this.addButton());
+    }
+  }
 
-      const title = card.querySelector('.shortcut-title');
-      title.textContent = shortcut.title;
+  card(item, index) {
+    const card = document.createElement('a');
+    card.className = `${TILE} cursor-move`;
+    card.href = item.url;
+    card.draggable = true;
+    card.dataset.index = index;
 
-      this.grid.appendChild(card);
+    const icon = document.createElement('img');
+    icon.src = faviconUrl(item.url);
+    icon.alt = '';
+    icon.className = 'w-5 h-5 min-[480px]:w-6 min-[480px]:h-6';
 
-      // Drag event listeners
-      card.addEventListener('dragstart', (e) => this.handleDragStart(e));
-      card.addEventListener('dragenter', (e) => this.handleDragEnter(e));
-      card.addEventListener('dragover', (e) => this.handleDragOver(e));
-      card.addEventListener('drop', (e) => this.handleDrop(e));
-      card.addEventListener('dragend', (e) => this.handleDragEnd(e));
+    const title = document.createElement('span');
+    title.className = 'text-xs font-medium';
+    title.textContent = item.title;
 
-      // Context menu listener
-      card.addEventListener('contextmenu', (e) => {
-        e.preventDefault();
-        this.showContextMenu(e, index);
-      });
+    card.append(icon, title);
+
+    card.addEventListener('dragstart', (event) => {
+      this.draggedIndex = index;
+      card.style.opacity = '0.4';
+      event.dataTransfer.effectAllowed = 'move';
     });
-
-    // Add "+" button if there's room for more shortcuts (always shown last)
-    if (shortcuts.length < config.maxShortcuts) {
-      const addButton = this.addShortcutPrototype.cloneNode(true);
-      addButton.id = ''; // Remove the ID from the clone
-      addButton.classList.remove('hidden'); // Make it visible
-      addButton.draggable = false; // Make it non-draggable
-      addButton.addEventListener('click', () => this.openDialog());
-      this.grid.appendChild(addButton);
-    }
+    card.addEventListener('dragend', () => {
+      card.style.opacity = '1';
+      this.draggedIndex = null;
+    });
+    card.addEventListener('dragover', (event) => {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'move';
+    });
+    card.addEventListener('drop', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.reorder(this.draggedIndex, index);
+    });
+    card.addEventListener('contextmenu', (event) => {
+      event.preventDefault();
+      this.showMenu(event, index);
+    });
+    return card;
   }
 
-  handleDragStart(e) {
-    this.draggedElement = e.currentTarget;
-    this.draggedIndex = parseInt(e.currentTarget.dataset.index);
-    e.currentTarget.style.opacity = '0.4';
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/html', e.currentTarget.innerHTML);
+  addButton() {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `${TILE} cursor-pointer`;
+    button.setAttribute('aria-label', 'Add shortcut');
+    button.innerHTML = `
+      <svg class="w-5 h-5 min-[480px]:w-6 min-[480px]:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+      </svg>`;
+    button.addEventListener('click', () => this.openDialog());
+    return button;
   }
 
-  handleDragOver(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    e.dataTransfer.dropEffect = 'move';
-    return false;
+  async reorder(from, to) {
+    if (from === null || from === to) return;
+    const items = this.items();
+    const [moved] = items.splice(from, 1);
+    items.splice(to, 0, moved);
+    await this.commit(items);
   }
 
-  handleDragEnter(e) {
-    e.preventDefault();
-  }
-
-  async handleDrop(e) {
-    e.stopPropagation();
-    e.preventDefault();
-
-    const targetElement = e.currentTarget;
-    const targetIndex = parseInt(targetElement.dataset.index);
-
-    if (this.draggedElement !== targetElement && this.draggedIndex !== targetIndex) {
-      // Reorder shortcuts array
-      const shortcuts = [...config.shortcuts];
-      const [removed] = shortcuts.splice(this.draggedIndex, 1);
-
-      // Adjust target index if we removed an item before it
-      const adjustedTargetIndex = this.draggedIndex < targetIndex ? targetIndex - 1 : targetIndex;
-      shortcuts.splice(adjustedTargetIndex, 0, removed);
-
-      // Save to config
-      await config.setShortcuts(shortcuts);
-
-      // Re-render
-      this.render();
-    }
-
-    return false;
-  }
-
-  handleDragEnd(e) {
-    e.currentTarget.style.opacity = '1';
-    this.draggedElement = null;
-    this.draggedIndex = null;
-  }
-
-  show() {
-    this.container.classList.remove('hidden');
-    this.render();
-  }
-
-  hide() {
-    this.container.classList.add('hidden');
-  }
-
-  openDialog(editIndex = null) {
-    this.editingIndex = editIndex;
-
-    if (editIndex !== null) {
-      // Edit mode
-      const shortcut = config.shortcuts[editIndex];
-      this.dialogTitle.textContent = 'Edit Shortcut';
-      this.titleInput.value = shortcut.title;
-      this.urlInput.value = shortcut.url;
-    } else {
-      // Add mode
-      this.dialogTitle.textContent = 'Add Shortcut';
-      this.titleInput.value = '';
-      this.urlInput.value = '';
-    }
-
+  openDialog(index = null) {
+    this.editingIndex = index;
+    const item = index === null ? null : this.items()[index];
+    this.dialogTitle.textContent = item ? 'Edit Shortcut' : 'Add Shortcut';
+    this.titleInput.value = item?.title ?? '';
+    this.urlInput.value = item?.url ?? '';
+    setError(this.dialogError, null);
     this.dialog.showModal();
   }
 
@@ -180,134 +205,44 @@ class ShortcutsManager {
     this.editingIndex = null;
   }
 
-  async saveShortcut() {
+  async save() {
     const title = this.titleInput.value.trim();
-    let url = this.urlInput.value.trim();
+    // Typing "example.com" should work, but "javascript:..." must not - it
+    // would end up as a card's href.
+    const url = safeUrl(this.urlInput.value, { assumeHttps: true });
 
-    if (!title || !url) {
-      return;
-    }
+    if (!title) return setError(this.dialogError, 'Give the shortcut a title.');
+    if (!url) return setError(this.dialogError, 'Enter a valid http(s) address.');
 
-    // Add https:// if no protocol is specified
-    if (!url.match(/^[a-zA-Z][a-zA-Z0-9+.-]*:/)) {
-      url = 'https://' + url;
-    }
+    const items = this.items();
+    if (this.editingIndex === null) items.push({ title, url });
+    else items[this.editingIndex] = { title, url };
 
-    const shortcuts = [...config.shortcuts];
-
-    if (this.editingIndex !== null) {
-      // Edit existing shortcut
-      shortcuts[this.editingIndex] = new ShortcutEntry(title, url);
-    } else {
-      // Add new shortcut
-      shortcuts.push(new ShortcutEntry(title, url));
-    }
-
-    await config.setShortcuts(shortcuts);
-
-    // Close dialog and re-render
+    await this.commit(items);
     this.closeDialog();
+  }
+
+  async remove() {
+    this.hideMenu();
+    if (this.editingIndex === null) return;
+    const items = this.items();
+    items.splice(this.editingIndex, 1);
+    await this.commit(items);
+  }
+
+  async commit(items) {
+    await this.set('items', items.slice(0, MAX_SHORTCUTS));
     this.render();
   }
 
-  showContextMenu(e, index) {
+  showMenu(event, index) {
     this.editingIndex = index;
-    this.contextMenu.style.left = `${e.pageX}px`;
-    this.contextMenu.style.top = `${e.pageY}px`;
-    this.contextMenu.classList.remove('hidden');
+    this.menu.style.left = `${event.pageX}px`;
+    this.menu.style.top = `${event.pageY}px`;
+    this.menu.classList.remove('hidden');
   }
 
-  hideContextMenu() {
-    this.contextMenu.classList.add('hidden');
-  }
-
-  handleEdit() {
-    this.hideContextMenu();
-    this.openDialog(this.editingIndex);
-  }
-
-  async handleDelete() {
-    this.hideContextMenu();
-
-    if (this.editingIndex !== null) {
-      const shortcuts = [...config.shortcuts];
-      shortcuts.splice(this.editingIndex, 1);
-      await config.setShortcuts(shortcuts);
-      this.render();
-    }
+  hideMenu() {
+    this.menu.classList.add('hidden');
   }
 }
-
-class ShortcutsWidget extends StartWidget {
-  constructor() {
-    super();
-    this.manager = new ShortcutsManager();
-  }
-
-  getId() {
-    return 'shortcuts';
-  }
-
-  getName() {
-    return 'Shortcuts';
-  }
-
-  registerConfig(config) {
-    // Register shortcuts.show config field
-    this.registerBooleanField(config, 'showShortcuts', 'show', true);
-  }
-
-  createSettingsUI(settingsContainer) {
-    const section = document.createElement('div');
-    section.className = 'mb-6';
-    section.innerHTML = `
-      <h3 class="text-sm font-semibold mb-3">Shortcuts</h3>
-      <label class="flex items-center cursor-pointer">
-        <input type="checkbox" id="shortcutsToggle" class="toggle toggle-primary" />
-        <span class="ml-3">Show shortcuts</span>
-      </label>
-    `;
-    settingsContainer.appendChild(section);
-    return section;
-  }
-
-  async init(config) {
-    const shortcutsContainer = document.getElementById('shortcutsContainer');
-    const shortcutsGrid = document.getElementById('shortcutsGrid');
-    const toggle = document.getElementById('shortcutsToggle');
-
-    // Initialize shortcuts manager
-    this.manager.init(shortcutsContainer, shortcutsGrid);
-
-    // Initialize toggle state
-    toggle.checked = config.showShortcuts;
-
-    // Show/hide based on config
-    if (config.showShortcuts) {
-      this.show();
-    } else {
-      this.hide();
-    }
-
-    // Listen for toggle changes
-    toggle.addEventListener('change', async (e) => {
-      const isChecked = e.target.checked;
-      await config.setShowShortcuts(isChecked);
-      if (isChecked) {
-        this.show();
-      } else {
-        this.hide();
-      }
-    });
-  }
-
-  show() {
-    this.manager.show();
-  }
-
-  hide() {
-    this.manager.hide();
-  }
-}
-
-const shortcutsWidget = new ShortcutsWidget();
