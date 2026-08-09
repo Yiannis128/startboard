@@ -1,5 +1,23 @@
 const fs = require('fs');
 const path = require('path');
+const { execFileSync } = require('child_process');
+
+/**
+ * Compiles Tailwind into src/output.css.
+ *
+ * Invoked directly rather than chained through a package script, so the build
+ * works the same whether it was started by npm, bun, or plain node.
+ */
+function buildCss(root) {
+  const binary = path.join(root, 'node_modules', '.bin', 'tailwindcss');
+  if (!fs.existsSync(binary)) {
+    throw new Error('tailwindcss is not installed - run your package manager\'s install first');
+  }
+  execFileSync(binary, ['-i', 'src/input.css', '-o', 'src/output.css'], {
+    cwd: root,
+    stdio: 'inherit',
+  });
+}
 
 /** Posix-style path relative to `base`, so exclusion rules read the same on any OS. */
 const relative = (base, file) => path.relative(base, file).split(path.sep).join('/');
@@ -26,4 +44,4 @@ function readVersion(root) {
   return JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf-8')).version;
 }
 
-module.exports = { copyTree, listFiles, readVersion };
+module.exports = { buildCss, copyTree, listFiles, readVersion };

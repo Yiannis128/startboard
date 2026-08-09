@@ -10,19 +10,41 @@ Pages).
 
 ## Build Commands
 
-- `npm run build:css` — regenerate `src/output.css` after touching Tailwind classes
-- `npm run watch` — same, on file changes
-- `npm run build:extension` → `dist/extension/` and `dist/startboard-extension.zip`
-- `npm run build:pwa` → `dist/pwa/`
-- `npm run build:all` — both
+This project uses **bun**, in CI and locally. `bun.lock` is the lockfile of
+record; there is no `package-lock.json`, and npm is not installed on the
+development machine.
 
-CI uses npm, so `package-lock.json` is the lockfile of record. This machine has
-no npm; use `bun run <script>` locally, which reads the same `package.json`
-scripts.
+- `bun install` — dependencies
+- `bun run build:extension` → `dist/extension/` and `dist/startboard-extension.zip`
+- `bun run build:pwa` → `dist/pwa/`
+- `bun run build:all` — both
+- `bun run watch` — rebuild CSS on change
+- `bun test` — the test suite
 
-Test the PWA with `npx serve dist/pwa` (or `python3 -m http.server` from inside
-`dist/pwa`). It must be served over HTTP — the ES modules and service worker
-will not load from `file://`.
+The build scripts compile the CSS themselves (`buildCss` in `scripts/lib.js`)
+rather than chaining a package script, so `node scripts/build-pwa.js` works
+regardless of which runner started it.
+
+Serve the PWA over HTTP to try it — `python3 -m http.server` from inside
+`dist/pwa`. ES modules and the service worker will not load from `file://`.
+
+## Tests
+
+`bun run test` builds the PWA and runs `test/`; `bun run test:only` skips the
+build when `dist/pwa` is already current. The service worker suite reads the
+*built* `dist/pwa/sw.js`, so it needs that build to exist.
+
+Tests are written against `node:test`, but run them with `bun test` — on a
+machine where `node` is a bun shim, `node --test` does not work.
+
+- `test/harness.mjs` — boots the real app in jsdom with browser globals
+  installed, plus `fakeChrome()`, a `chrome.*` stub that enforces the real 8KB
+  sync per-item quota so the two storage tiers can be told apart
+- `test/pwa.test.mjs`, `test/extension.test.mjs` — the same app under each runtime
+- `test/migrations.test.mjs`, `test/sw.test.mjs`
+
+There is no browser in CI, so nothing here covers layout, animation, drag and
+drop, or the file picker. Those still need a manual pass.
 
 ## Architecture
 
@@ -187,7 +209,7 @@ full (see the `ACCENTS` map in `core/fields.js`).
 
 ## Loading the Extension
 
-1. `npm run build:extension`
+1. `bun run build:extension`
 2. `chrome://extensions/` → enable "Developer mode"
 3. "Load unpacked" → select `dist/extension/`
 
@@ -201,12 +223,29 @@ Click refresh on the extension card after code changes.
 trailing commas) and is sanitized before `JSON.parse`. Cached for a week in
 local storage.
 
-## Deployment
+## Workflows
 
-- PWA: auto-deploys to GitHub Pages on push to master via
-  `.github/workflows/deploy-pwa.yml`
-- Chrome extension: no workflow currently exists; `dist/startboard-extension.zip`
-  is uploaded to a release by hand
+- `test.yml` — pull requests and master: builds both targets, runs the suite
+- `build.yml` — master, and callable via `workflow_call`; uploads both builds as
+  artifacts and exposes the manifest version as an output
+- `deploy-pwa.yml` — master: deploys `dist/pwa` to GitHub Pages
+- `release.yml` — on release creation: calls `build.yml`, attaches the zip to the
+  release, publishes to the Chrome Web Store
 
-`manifest.json` is the single source of version truth. Both builds read it, and
-`package.json` should be kept in step with it.
+## Releasing
+
+`manifest.json` is the single source of version truth — both builds read it, and
+`package.json` should be kept in step. Bump it, commit, then create a release
+tagged `v<version>`. `release.yml` refuses to publish when the tag and the
+manifest disagree, so a forgotten bump fails the release instead of shipping a
+mislabelled extension.
+
+Publishing needs four repository secrets: `CHROME_EXTENSION_ID`,
+`CHROME_CLIENT_ID`, `CHROME_CLIENT_SECRET`, `CHROME_REFRESH_TOKEN` (see
+https://developer.chrome.com/docs/webstore/using-api). The workflow talks to the
+Web Store API with `curl` rather than a third-party action, to keep publish
+credentials out of code this repo does not control. Both endpoints answer 200
+with a failure payload, so the job inspects the response body, not the status.
+
+The GitHub release asset is attached before the Web Store step, so a Web Store
+failure still leaves a downloadable build on the release.

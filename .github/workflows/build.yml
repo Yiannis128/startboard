@@ -1,0 +1,58 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - master
+  # Callable so the release workflow builds exactly what CI builds.
+  workflow_call:
+    outputs:
+      version:
+        description: Version read from manifest.json
+        value: ${{ jobs.build.outputs.version }}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build extension and PWA
+        run: bun run build:all
+
+      # manifest.json is the single source of version truth; both builds read it.
+      - name: Read version
+        id: version
+        run: echo "version=$(jq -r .version manifest.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload extension
+        uses: actions/upload-artifact@v7
+        with:
+          name: extension
+          path: dist/startboard-extension.zip
+          if-no-files-found: error
+
+      - name: Upload PWA
+        uses: actions/upload-artifact@v7
+        with:
+          name: pwa
+          path: dist/pwa
+          if-no-files-found: error

@@ -6,14 +6,17 @@
   "scripts": {
     "build:css": "tailwindcss -i src/input.css -o src/output.css",
     "watch": "tailwindcss -i src/input.css -o src/output.css --watch",
-    "build:extension": "npm run build:css && node scripts/build-extension.js",
-    "build:pwa": "npm run build:css && node scripts/build-pwa.js",
-    "build:all": "npm run build:extension && npm run build:pwa"
+    "build:extension": "node scripts/build-extension.js",
+    "build:pwa": "node scripts/build-pwa.js",
+    "build:all": "node scripts/build-extension.js && node scripts/build-pwa.js",
+    "test": "node scripts/build-pwa.js && bun test",
+    "test:only": "bun test"
   },
   "license": "ISC",
   "devDependencies": {
     "@tailwindcss/cli": "^4.1.18",
     "daisyui": "^5.5.14",
+    "jsdom": "^30.0.1",
     "tailwindcss": "^4.1.18"
   }
 }

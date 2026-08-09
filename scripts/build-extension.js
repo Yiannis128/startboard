@@ -10,7 +10,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
-const { copyTree, readVersion } = require('./lib');
+const { buildCss, copyTree, readVersion } = require('./lib');
 
 const ROOT = path.join(__dirname, '..');
 const OUT = path.join(ROOT, 'dist', 'extension');
@@ -21,6 +21,7 @@ const EXCLUDE = new Set(['manifest.webmanifest', 'sw.js', 'input.css']);
 function build() {
   const version = readVersion(ROOT);
   console.log(`Building Chrome extension (v${version})...`);
+  buildCss(ROOT);
 
   fs.rmSync(OUT, { recursive: true, force: true });
   copyTree(path.join(ROOT, 'src'), path.join(OUT, 'src'), EXCLUDE);
