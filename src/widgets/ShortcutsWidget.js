@@ -22,15 +22,9 @@ const DEFAULTS = [
   ['Yiannis', 'https://yiannis.info'],
 ].map(([title, url]) => ({ title, url }));
 
-const faviconUrl = (url) => {
-  let domain;
-  try {
-    domain = new URL(url).hostname;
-  } catch {
-    domain = url;
-  }
-  return `https://www.google.com/s2/favicons?sz=32&domain=${encodeURIComponent(domain)}`;
-};
+// Only ever called with a URL that safeUrl() has already parsed and normalised.
+const faviconUrl = (url) =>
+  `https://www.google.com/s2/favicons?sz=32&domain=${encodeURIComponent(new URL(url).hostname)}`;
 
 export class ShortcutsWidget extends Widget {
   static id = 'shortcuts';
@@ -131,7 +125,6 @@ export class ShortcutsWidget extends Widget {
     card.className = `${TILE} cursor-move`;
     card.href = item.url;
     card.draggable = true;
-    card.dataset.index = index;
 
     const icon = document.createElement('img');
     icon.src = faviconUrl(item.url);
@@ -232,7 +225,7 @@ export class ShortcutsWidget extends Widget {
 
   async commit(items) {
     await this.set('items', items.slice(0, MAX_SHORTCUTS));
-    this.render();
+    this.refresh();
   }
 
   showMenu(event, index) {

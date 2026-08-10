@@ -1,5 +1,5 @@
 import { Widget } from '../core/Widget.js';
-import { setTheme, isDark, prefersDark } from '../core/theme.js';
+import { setTheme, prefersDark } from '../core/theme.js';
 
 const ROLES = ['primary', 'secondary', 'accent'];
 
@@ -51,10 +51,11 @@ export class ThemeWidget extends Widget {
 
   render() {
     const mode = this.get('mode');
+    const theme = mode === 'system' ? (prefersDark().matches ? 'dark' : 'light') : mode;
     // Notifies anything that varies by theme, the backdrop included.
-    setTheme(mode === 'system' ? (prefersDark().matches ? 'dark' : 'light') : mode);
+    setTheme(theme);
 
-    const dark = isDark();
+    const dark = theme === 'dark';
     const style = document.documentElement.style;
     for (const role of ROLES) {
       const color = COLORS.find((c) => c.name === this.get(`${role}Color`));

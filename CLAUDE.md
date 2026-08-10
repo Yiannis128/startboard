@@ -159,7 +159,7 @@ Both build scripts copy `src/` recursively and exclude by name, so neither has
 a file manifest to maintain. `scripts/lib.js` holds the shared copy and listing
 helpers.
 
-- Extension: excludes `manifest.webmanifest`, `sw.js`, `version.js`, `input.css`
+- Extension: excludes `manifest.webmanifest`, `sw.js`, `input.css`
 - PWA: excludes `input.css`, injects the manifest link, meta tags, generated
   `version.js`, and the service worker registration into `index.html`
 

@@ -1,5 +1,3 @@
-import { notify } from './notify.js';
-
 /** Chrome extension APIs, with PWA fallbacks. */
 export const Runtime = {
   isExtension() {
@@ -18,12 +16,9 @@ export const Runtime = {
     return globalThis.STARTBOARD_VERSION ?? 'unknown';
   },
 
+  // app.js only wires the control that calls this when isExtension() is true.
   openSettings() {
-    if (Runtime.isExtension() && chrome.tabs?.update) {
-      chrome.tabs.update({ url: 'chrome://settings/appearance' });
-    } else {
-      notify('Additional settings are only available in the browser extension.');
-    }
+    chrome.tabs.update({ url: 'chrome://settings/appearance' });
   },
 
   /**

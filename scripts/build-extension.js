@@ -16,14 +16,14 @@ const ROOT = path.join(__dirname, '..');
 const OUT = path.join(ROOT, 'dist', 'extension');
 const ZIP = path.join(ROOT, 'dist', 'startboard-extension.zip');
 
-const EXCLUDE = ['manifest.webmanifest', 'sw.js', 'version.js', 'input.css'];
+const EXCLUDE = new Set(['manifest.webmanifest', 'sw.js', 'input.css']);
 
 function build() {
   const version = readVersion(ROOT);
   console.log(`Building Chrome extension (v${version})...`);
 
   fs.rmSync(OUT, { recursive: true, force: true });
-  copyTree(path.join(ROOT, 'src'), path.join(OUT, 'src'), (file) => EXCLUDE.includes(file));
+  copyTree(path.join(ROOT, 'src'), path.join(OUT, 'src'), EXCLUDE);
   fs.copyFileSync(path.join(ROOT, 'manifest.json'), path.join(OUT, 'manifest.json'));
   fs.copyFileSync(path.join(ROOT, 'LICENSE'), path.join(OUT, 'LICENSE'));
 

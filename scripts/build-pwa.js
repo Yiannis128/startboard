@@ -16,9 +16,9 @@ const ROOT = path.join(__dirname, '..');
 const SRC = path.join(ROOT, 'src');
 const OUT = path.join(ROOT, 'dist', 'pwa');
 
-const EXCLUDE = ['input.css'];
+const EXCLUDE = new Set(['input.css']);
 
-const PRECACHE_SKIP = [/^sw\.js$/, /^LICENSE$/];
+const PRECACHE_SKIP = new Set(['sw.js', 'LICENSE']);
 
 // The shell is code and markup, whatever its size, plus small assets. Bulk
 // content is fetched and cached on first use instead: the backdrop library
@@ -26,10 +26,10 @@ const PRECACHE_SKIP = [/^sw\.js$/, /^LICENSE$/];
 const SHELL_TYPES = ['.html', '.css', '.js', '.webmanifest'];
 const MAX_ASSET_BYTES = 64 * 1024;
 
-function isShell(file, absolutePath) {
-  if (PRECACHE_SKIP.some((pattern) => pattern.test(file))) return false;
+function isShell(file) {
+  if (PRECACHE_SKIP.has(file)) return false;
   if (SHELL_TYPES.includes(path.extname(file))) return true;
-  return fs.statSync(absolutePath).size <= MAX_ASSET_BYTES;
+  return fs.statSync(path.join(OUT, file)).size <= MAX_ASSET_BYTES;
 }
 
 // Anchored after the viewport meta so the charset declaration stays first.
@@ -69,7 +69,7 @@ function build() {
   console.log(`Building PWA (v${version})...`);
 
   fs.rmSync(OUT, { recursive: true, force: true });
-  copyTree(SRC, OUT, (file) => EXCLUDE.includes(file));
+  copyTree(SRC, OUT, EXCLUDE);
   fs.copyFileSync(path.join(ROOT, 'LICENSE'), path.join(OUT, 'LICENSE'));
 
   fs.writeFileSync(
@@ -79,7 +79,7 @@ function build() {
 
   patch('index.html', { [HEAD_ANCHOR]: PWA_HEAD, '</body>': SW_REGISTRATION });
 
-  const shell = listFiles(OUT).filter((file) => isShell(file, path.join(OUT, file)));
+  const shell = listFiles(OUT).filter(isShell);
   const precache = ['./', ...shell.map((file) => `./${file}`)];
 
   patch('sw.js', { '{{VERSION}}': version, '{{ASSETS}}': JSON.stringify(precache, null, 2) });

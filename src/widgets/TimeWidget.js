@@ -31,7 +31,6 @@ export class TimeWidget extends Widget {
     this.timer = null;
     this.units = {};
     this.periodElement = null;
-    this.lastText = null;
   }
 
   mount() {
@@ -60,7 +59,6 @@ export class TimeWidget extends Widget {
       [...this.display.querySelectorAll('[data-unit]')].map((el) => [el.dataset.unit, el]),
     );
     this.periodElement = this.display.querySelector('[data-period]');
-    this.lastText = null;
 
     this.tick();
     this.timer = setInterval(() => this.tick(), 1000);
@@ -81,10 +79,7 @@ export class TimeWidget extends Widget {
       const parts = [hours, now.getMinutes(), ...(this.get('showSeconds') ? [now.getSeconds()] : [])];
       const text = parts.map(pad).join(':') + (use24Hour ? '' : ` ${period}`);
       // Rewriting an identical string still drops and rebuilds the text node.
-      if (text !== this.lastText) {
-        this.display.textContent = text;
-        this.lastText = text;
-      }
+      if (this.display.textContent !== text) this.display.textContent = text;
       return;
     }
 

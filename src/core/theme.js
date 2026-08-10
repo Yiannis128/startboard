@@ -9,6 +9,10 @@
 const THEME_CHANGE = 'theme:change';
 
 export function setTheme(theme) {
+  // Subscribers repaint on this event, and the backdrop's repaint can touch a
+  // multi-megabyte upload - so a colour change, which cannot flip light/dark,
+  // must not fire it.
+  if (document.documentElement.getAttribute('data-theme') === theme) return;
   document.documentElement.setAttribute('data-theme', theme);
   document.documentElement.dispatchEvent(new CustomEvent(THEME_CHANGE, { detail: { theme } }));
 }

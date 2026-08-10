@@ -4,12 +4,12 @@ const path = require('path');
 /** Posix-style path relative to `base`, so exclusion rules read the same on any OS. */
 const relative = (base, file) => path.relative(base, file).split(path.sep).join('/');
 
-/** Copies `from` into `to`, skipping paths for which `exclude` returns true. */
-function copyTree(from, to, exclude = () => false, base = from) {
+/** Copies `from` into `to`, skipping any path listed in `exclude`. */
+function copyTree(from, to, exclude, base = from) {
   fs.mkdirSync(to, { recursive: true });
   for (const entry of fs.readdirSync(from, { withFileTypes: true })) {
     const source = path.join(from, entry.name);
-    if (exclude(relative(base, source))) continue;
+    if (exclude.has(relative(base, source))) continue;
     if (entry.isDirectory()) copyTree(source, path.join(to, entry.name), exclude, base);
     else fs.copyFileSync(source, path.join(to, entry.name));
   }

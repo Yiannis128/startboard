@@ -4,8 +4,7 @@
  * hand-maintained file list here.
  */
 
-const CACHE_VERSION = '{{VERSION}}';
-const CACHE_NAME = `startboard-${CACHE_VERSION.startsWith('{{') ? 'dev' : `v${CACHE_VERSION}`}`;
+const CACHE_NAME = 'startboard-v{{VERSION}}';
 
 // The app shell only - see isShell() in the build script. Bulk assets such as
 // the ~13MB backdrop library are cached on first use instead of up front.
@@ -46,12 +45,12 @@ async function staleWhileRevalidate(event) {
   const cached = await caches.match(event.request);
 
   if (cached) {
-    event.waitUntil(refresh(event.request));
+    event.waitUntil(refresh(event));
     return cached;
   }
 
   try {
-    return await refresh(event.request);
+    return await refresh(event);
   } catch {
     if (event.request.mode === 'navigate') {
       const shell = await caches.match('./index.html');
@@ -61,11 +60,15 @@ async function staleWhileRevalidate(event) {
   }
 }
 
-async function refresh(request) {
-  const response = await fetch(request);
+async function refresh(event) {
+  const response = await fetch(event.request);
   if (response.ok) {
-    const cache = await caches.open(CACHE_NAME);
-    await cache.put(request, response.clone());
+    // Handed back before the write lands: the assets that miss the cache are
+    // the ones too big to precache, and awaiting a multi-megabyte cache.put
+    // would hold up first paint.
+    event.waitUntil(
+      caches.open(CACHE_NAME).then((cache) => cache.put(event.request, response.clone())),
+    );
   }
   return response;
 }

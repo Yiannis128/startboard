@@ -41,9 +41,7 @@ const RENDERERS = {
   text: (key, field) => `
     ${label(field.label)}
     <input type="text" class="input input-bordered w-full" data-field="${key}"
-           placeholder="${escapeHtml(field.placeholder ?? '')}" />
-    ${field.help ? `<p class="text-xs opacity-70 mt-1">${escapeHtml(field.help)}</p>` : ''}
-    <div class="text-error text-sm mt-1 hidden" data-error="${key}"></div>`,
+           placeholder="${escapeHtml(field.placeholder ?? '')}" />`,
 
   select: (key, field) => `
     ${label(field.label)}
@@ -118,10 +116,22 @@ function rangeTicks(field) {
   return Array.from({ length: 5 }, (_, i) => format(field.min + (span * i) / 4));
 }
 
+/**
+ * Help text and the error slot belong to any field type, not just `text`.
+ * bindField honours `validate` on every type, so a type that rendered no slot
+ * would reject the value with nothing on screen to say why.
+ */
+function annotations(key, field) {
+  return (
+    (field.help ? `<p class="text-xs opacity-70 mt-1">${escapeHtml(field.help)}</p>` : '') +
+    (field.validate ? `<div class="text-error text-sm mt-1 hidden" data-error="${key}"></div>` : '')
+  );
+}
+
 /** Wraps a field's control in its layout, or in a collapse if requested. */
 export function renderField(key, field, accordionGroup) {
   if (isHidden(field)) return '';
-  const inner = RENDERERS[field.type](key, field);
+  const inner = RENDERERS[field.type](key, field) + annotations(key, field);
 
   if (field.collapsible) {
     return `
@@ -164,7 +174,13 @@ export function writeControl(section, key, field, value) {
 export function bindField(section, key, field, commit) {
   if (isHidden(field)) return;
   const elements = section.querySelectorAll(`[data-field="${CSS.escape(key)}"]`);
-  const errorElement = section.querySelector(`[data-error="${CSS.escape(key)}"]`);
+  // Both slots exist only for the fields that declared them, so the lookups
+  // are skipped rather than run once per field on the new-tab path.
+  const errorElement = field.validate
+    ? section.querySelector(`[data-error="${CSS.escape(key)}"]`)
+    : null;
+  const rangeValue =
+    field.type === 'range' ? section.querySelector(`[data-range-value="${CSS.escape(key)}"]`) : null;
 
   const onCommit = (event) => {
     const value = readControl(field, event.target);
@@ -175,9 +191,13 @@ export function bindField(section, key, field, commit) {
 
   for (const element of elements) {
     element.addEventListener(field.live ? 'input' : 'change', onCommit);
-    if (field.type === 'range') {
-      // Track the slider live, but only persist once the drag ends.
-      element.addEventListener('input', () => writeControl(section, key, field, element.value));
+    if (field.type === 'range' && rangeValue) {
+      // Track the slider live, but only persist once the drag ends. Writing
+      // the one span beats re-scanning the section on every pointer move.
+      const format = field.format ?? String;
+      element.addEventListener('input', () => {
+        rangeValue.textContent = format(element.value);
+      });
     }
   }
 }

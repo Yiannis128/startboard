@@ -116,7 +116,9 @@ export class BackdropWidget extends Widget {
 
   constructor(config) {
     super(config);
-    // value -> data URL, or null once known to be absent. Populated lazily.
+    // value -> escaped `url("...")`, or null once known to be absent. Held
+    // ready-to-paint because escaping a multi-megabyte data URL scans and
+    // reallocates the whole string, and a repaint must not pay that again.
     this.uploads = new Map();
   }
 
@@ -167,7 +169,7 @@ export class BackdropWidget extends Widget {
     const option = IMAGES.find((o) => o.value === this.get('image'));
     if (!option) return paint({});
 
-    let src = `img/${option.value}`;
+    let image = cssUrl(`img/${option.value}`);
     if (option.custom) {
       // An upload is a multi-megabyte data URL. Read it only when it is the
       // one actually selected, so the common case costs no storage access.
@@ -175,16 +177,16 @@ export class BackdropWidget extends Widget {
         this.uploads.set(option.value, null);
         this.getLocal(option.custom).then((dataUrl) => {
           if (!dataUrl) return;
-          this.uploads.set(option.value, dataUrl);
+          this.uploads.set(option.value, cssUrl(dataUrl));
           this.render();
         });
       }
-      src = this.uploads.get(option.value);
+      image = this.uploads.get(option.value);
     }
 
-    if (!src) return paint({});
+    if (!image) return paint({});
     paint({
-      backgroundImage: cssUrl(src),
+      backgroundImage: image,
       backgroundRepeat: option.tiled ? 'repeat' : 'no-repeat',
       backgroundSize: option.tiled ? 'auto' : 'cover',
       backgroundPosition: option.tiled ? 'top left' : 'center',
@@ -201,7 +203,7 @@ export class BackdropWidget extends Widget {
       // Uploads are far past the 8KB chrome.storage.sync per-item quota, so
       // they live in local storage and never sync.
       await this.setLocal(option.custom, dataUrl);
-      this.uploads.set(option.value, dataUrl);
+      this.uploads.set(option.value, cssUrl(dataUrl));
       this.render();
     } catch (error) {
       console.error('Backdrop upload failed:', error);

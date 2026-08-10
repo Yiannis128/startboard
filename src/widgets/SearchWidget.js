@@ -125,16 +125,20 @@ export class SearchWidget extends Widget {
     setError(this.bangsError, null);
     let cached;
     try {
-      cached = await this.getLocal(BANGS_CACHE_KEY);
-      if (!force && cached?.data && Date.now() - cached.timestamp < BANGS_TTL_MS) {
-        this.bangs = cached.data;
-        return;
+      // Reading the cache is megabytes of IPC and JSON.parse, so a forced
+      // refresh skips it rather than fetching over the top of it.
+      if (!force) {
+        cached = await this.getLocal(BANGS_CACHE_KEY);
+        if (cached?.data && Date.now() - cached.timestamp < BANGS_TTL_MS) {
+          this.bangs = cached.data;
+          return;
+        }
       }
       this.bangs = await fetchBangs();
       await this.setLocal(BANGS_CACHE_KEY, { data: this.bangs, timestamp: Date.now() });
     } catch (error) {
       // Stale bangs beat no bangs.
-      this.bangs = cached?.data ?? null;
+      this.bangs = (cached ?? (await this.getLocal(BANGS_CACHE_KEY)))?.data ?? null;
       setError(this.bangsError, `Failed to load bangs: ${error.message}`);
     }
   }
@@ -147,11 +151,9 @@ export class SearchWidget extends Widget {
 
   searchUrl(query) {
     const engine = this.get('engine');
-    const template =
-      engine === 'custom'
-        ? this.get('customUrl') || ENGINES.google.url
-        : (ENGINES[engine] ?? ENGINES.google).url;
-    const url = template.includes('%s') ? template : ENGINES.google.url;
+    const template = engine === 'custom' ? this.get('customUrl') : ENGINES[engine]?.url;
+    // Covers an empty custom URL, one missing %s, and an unknown engine alike.
+    const url = template?.includes('%s') ? template : ENGINES.google.url;
     return safeUrl(url.replace('%s', encodeURIComponent(query)));
   }
 

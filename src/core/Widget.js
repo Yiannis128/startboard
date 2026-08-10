@@ -56,6 +56,16 @@ export class Widget {
   /** Called once after mount, then after every settings change. */
   render() {}
 
+  /**
+   * The post-commit path: re-apply visibility rules, then re-render. Widgets
+   * that write settings outside a bound control should call this rather than
+   * `render()`, so a `visibleWhen` reading that value still updates.
+   */
+  refresh() {
+    applyVisibility(this.section, this.constructor.schema, (name) => this.get(name));
+    this.render();
+  }
+
   /** Side effects that need to know which field changed. */
   onChange() {}
 
@@ -99,19 +109,13 @@ export async function mountWidget(widget, { settingsContainer, viewContainer }) 
   viewContainer.appendChild(root);
   widget.root = root;
 
-  const get = (name) => widget.get(name);
-  const refresh = () => {
-    applyVisibility(section, schema, get);
-    widget.render();
-  };
-
   for (const [name, field] of Object.entries(schema)) {
     writeControl(section, name, field, widget.get(name));
     bindField(section, name, field, async (value) => {
       try {
         await widget.set(name, value);
         await widget.onChange(name, value);
-        refresh();
+        widget.refresh();
       } catch (error) {
         console.error(`${WidgetClass.id}.${name} failed:`, error);
         notify(`Could not save ${WidgetClass.title} settings.`, 'error');
@@ -120,5 +124,5 @@ export async function mountWidget(widget, { settingsContainer, viewContainer }) 
   }
 
   await widget.mount();
-  refresh();
+  widget.refresh();
 }
