@@ -45,10 +45,16 @@ any one alone passes. A process per file is also the isolation the tests assume:
 module-level state in `src/` starts fresh and one file's stubs cannot leak into
 the next. Do not "simplify" this back to a bare `bun test`.
 
+A `boot()` costs about 85ms and leaks its jsdom window for the life of the
+process, so files are split when they stop being about one subject rather than
+at any particular count.
+
 - `test/harness.mjs` — boots the real app in jsdom with browser globals
   installed, plus `fakeChrome()`, a `chrome.*` stub that enforces the real 8KB
   sync per-item quota so the two storage tiers can be told apart
-- `test/pwa.test.mjs`, `test/extension.test.mjs` — the same app under each runtime
+- `test/pwa.test.mjs`, `test/extension.test.mjs` — the same app under each
+  runtime
+- `test/status.test.mjs` — the status widget, permission gate included
 - `test/migrations.test.mjs`, `test/sw.test.mjs`
 
 There is no browser in CI, so nothing here covers layout, animation, drag and
@@ -96,9 +102,14 @@ export class TimeWidget extends Widget {
   mount() {}     // once: build this.root, wire this.section extras
   render() {}    // after mount, and after every settings change
   onChange() {}  // side effects that need to know which field changed
-  destroy() {}   // release timers and listeners
+  destroy() {}   // release listeners; the ticker is cleared for you
 }
 ```
+
+A widget that ticks calls `this.repeat(fn, ms)` rather than owning a timer:
+`repeat()` with no arguments stops it, every call replaces the previous one, and
+the base `destroy()` clears it — so a widget that renders conditionally cannot
+stack tickers or leave one running.
 
 The framework does the rest: it renders the sidebar controls from `schema`,
 reflects stored values into them, persists edits, and calls `render()`
@@ -115,7 +126,8 @@ build, not a step to follow.
 Field types live in `core/fields.js`: `boolean`, `text`, `select`, `range`,
 `choice` (radio tiles with an optional colour swatch, thumbnail, or custom
 HTML), and `value` for state that persists but renders no control. Fields also
-take `visibleWhen(get)` to show or hide themselves based on sibling fields,
+take `visibleWhen(get, widget)` to show or hide themselves based on sibling
+fields — or on runtime state the widget holds, as `status.show` does,
 `validate(value)` to block invalid input with an inline error, `collapsible` to
 wrap themselves in an accordion, and `live` to commit on every keystroke instead
 of on blur. Use `live` sparingly: each keystroke is a storage write, and
@@ -182,6 +194,90 @@ bang targets come from a third-party feed. All three are places a
 `javascript:` URL would be script execution, so the scheme allowlist is not
 optional. Shortcuts are re-validated on render, not just on save, because an
 imported file bypasses the save path.
+
+### Service checks
+
+`StatusWidget` pings each configured endpoint on its own refresh rate and shows
+a dot per service: green responding, yellow mid-check, red answered with an
+error, grey nothing answered.
+
+Each probe is two attempts. `mode: 'cors'` first, because the status code is the
+only thing that separates an error reply from a healthy one; if that fails,
+`mode: 'no-cors'`, whose opaque response resolves for any HTTP status and
+rejects only when nothing answered at all. A self-hosted service rarely sends
+CORS headers, so most endpoints land on the second attempt and go green with no
+status to show.
+
+The opaque fallback is not enough on its own. A service that sends
+`Cross-Origin-Resource-Policy: same-origin` — Vaultwarden does, and it is
+ordinary hardening — has the browser refuse the no-cors read as well, so both
+attempts fail and a perfectly healthy service reads as grey. Nothing a page can
+do gets past that: an `<img>` or `link` probe is a no-cors subresource and is
+blocked the same way.
+
+The way out is a Chrome host permission, which exempts the fetch from CORS so
+the first attempt succeeds and CORP never applies (it is only ever checked on
+no-cors requests). `manifest.json` declares `optional_host_permissions:
+["*://*/*"]` — optional, so it carries no install-time warning — and
+`Runtime.needsHostAccess()` / `requestHostAccess()` read and ask for it, taking
+the pattern from the manifest rather than repeating it, because a pattern the
+manifest does not declare is rejected outright. An endpoint can be any host and
+Chrome grants access by pattern, so there is nothing narrower to ask for.
+
+The whole settings section is **gated** on holding it: until then the section is
+a "Grant Permission" button and an explanation, with the show toggle, the
+placement picker and the endpoint editor all hidden.
+
+That gate is a prompt, not an invariant. `status.items` is synced while the
+permission is per-install, so "endpoints configured, permission not held" is the
+ordinary state of a second machine — there the panel shows grey dots until the
+user grants, and the rows are behind the same button. Do not write anything
+downstream against "a reply is always readable".
+
+`this.gated` is set from an un-awaited check in `mount()`: it decides what the
+settings section offers, and the sidebar starts closed, so it must not hold up
+the first paint. The two fields hide themselves through `visibleWhen`, which is
+handed the widget for exactly this — state the widget only learns at runtime.
+
+None of this reaches the PWA, where a page cannot be granted anything and the
+two-attempt probe is all there is: a CORP-protected endpoint reads as grey
+there, as does an `http://` one (mixed content on an HTTPS-hosted page). The
+extension is the way to watch either, and the settings section says so — a
+warning block that `settingsExtra()` renders only when `Runtime.isExtension()`
+is false, since a grey dot on its own looks like a broken service.
+
+Nothing in the page can tell a blocked read from a dead host: both reject as
+`TypeError: Failed to fetch`, cross-origin Resource Timing entries are zeroed
+without `Timing-Allow-Origin`, an `<img>` probe is a no-cors subresource and is
+blocked the same way, and a WebSocket reports 1006 either way. Closing that
+inference is what CORP is for, so do not go looking for a signal to key off.
+
+Results are cached in the local tier and read back on the first sweep. Without
+that the refresh rate would gate nothing: a new-tab page lives for seconds, so
+every endpoint would be re-probed on every tab the user opens. The cache is what
+makes "check every 10 minutes" true, and it also means the dots come up at their
+last known colour instead of flashing yellow on every tab. It is read from the
+sweep rather than from `mount()`, so a setup with no endpoints reads nothing.
+
+One `setInterval` covers the whole list rather than one timer per endpoint: it
+ticks every 15s and probes whatever is due. It does nothing while the tab is
+hidden, and a return to the tab is picked up by the next tick.
+
+The endpoints are edited from the sidebar — an "Add Endpoint" button and one row
+each, where a row's name opens the editor and ✕ removes it. The page tiles are
+read-only status apart from their right-click menu, which is the only place
+"Check now" lives. `placement` picks which edge the panel is pinned to; left and
+right stack, top and bottom spread, and the dot faces the anchored edge. The
+placement classes go on an inner `[data-panel]`, so hiding the widget leaves the
+framework's `this.root` alone — and leaves the dialog, which sits outside the
+panel, reachable from the sidebar while the panel is off.
+
+Sidebar rows reorder by drag, on one pointer-event path for mouse and touch
+alike, with `setPointerCapture` keeping a drag alive once it leaves the row.
+Touch waits for a hold first, so a swipe over the list still scrolls, and the
+held row then stops that scroll from a non-passive `touchmove` listener —
+`touch-action` cannot do it, since the rows have to stay scrollable until the
+hold decides otherwise.
 
 ### Builds
 

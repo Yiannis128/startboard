@@ -26,6 +26,7 @@ export class Widget {
     this.section = null;
     /** The widget's container on the page. Empty for settings-only widgets. */
     this.root = null;
+    this._ticker = null;
   }
 
   get(name) {
@@ -62,15 +63,27 @@ export class Widget {
    * `render()`, so a `visibleWhen` reading that value still updates.
    */
   refresh() {
-    applyVisibility(this.section, this.constructor.schema, (name) => this.get(name));
+    applyVisibility(this.section, this.constructor.schema, (name) => this.get(name), this);
     this.render();
   }
 
   /** Side effects that need to know which field changed. */
   onChange() {}
 
-  /** Release timers and listeners. */
-  destroy() {}
+  /**
+   * Runs `fn` every `ms`, replacing this widget's previous ticker; call it with
+   * no arguments to stop. A widget that renders conditionally can therefore not
+   * stack tickers or leave one running.
+   */
+  repeat(fn, ms) {
+    clearInterval(this._ticker);
+    this._ticker = fn ? setInterval(fn, ms) : null;
+  }
+
+  /** Release listeners. Runs on pagehide, and clears the ticker for you. */
+  destroy() {
+    this.repeat();
+  }
 }
 
 /** Every default in the app, keyed the way Config stores them. */

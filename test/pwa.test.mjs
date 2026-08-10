@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  boot, set, settled, settings, field, option, view, isHidden, SRC, SCHEMA_VERSION,
+  boot, set, settled, settings, countIntervals, field, option, view, isHidden,
+  SRC, SCHEMA_VERSION,
 } from './harness.mjs';
 
 // From the widget's schema, so editing the default shortcut list is a content
@@ -76,30 +77,18 @@ test('time renders each style and honours seconds and 12-hour', async () => {
 test('time clears its interval when hidden', async () => {
   // Counting live intervals rather than waiting out a tick: the wall-clock
   // version had to sleep past the clock's 1s period to mean anything.
-  const live = new Set();
-  const [realSet, realClear] = [globalThis.setInterval, globalThis.clearInterval];
-  globalThis.setInterval = (...args) => {
-    const id = realSet(...args);
-    live.add(id);
-    return id;
-  };
-  globalThis.clearInterval = (id) => {
-    live.delete(id);
-    return realClear(id);
-  };
-
+  const intervals = countIntervals();
   try {
     const window = await boot();
-    assert.equal(live.size, 0, 'a hidden clock should not be ticking');
+    assert.equal(intervals.size, 0, 'a hidden clock should not be ticking');
 
     await set(field(window, 'time', 'show'), true);
-    assert.equal(live.size, 1, 'showing the clock starts exactly one interval');
+    assert.equal(intervals.size, 1, 'showing the clock starts exactly one interval');
 
     await set(field(window, 'time', 'show'), false);
-    assert.equal(live.size, 0, 'hiding the clock clears it');
+    assert.equal(intervals.size, 0, 'hiding the clock clears it');
   } finally {
-    globalThis.setInterval = realSet;
-    globalThis.clearInterval = realClear;
+    intervals.restore();
   }
 });
 

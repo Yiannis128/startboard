@@ -6,6 +6,9 @@ import { fileURLToPath } from 'node:url';
 export const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const SRC = path.join(ROOT, 'src');
 
+/** The real manifest, so a stub cannot claim permissions it does not declare. */
+export const MANIFEST = JSON.parse(fs.readFileSync(path.join(ROOT, 'manifest.json'), 'utf-8'));
+
 // So a seed meaning "already current" stays current when a migration lands,
 // rather than quietly becoming a stale document that gets migrated.
 export { SCHEMA_VERSION } from '../src/core/migrations.js';
@@ -21,7 +24,7 @@ let bootCount = 0;
  * their module state for the life of the process - which is why
  * scripts/test.js gives each test file its own process.
  */
-export async function boot({ chrome, settings } = {}) {
+export async function boot({ chrome, settings, local, fetch } = {}) {
   const html = fs.readFileSync(path.join(SRC, 'index.html'), 'utf-8');
   const dom = new JSDOM(html, { url: 'https://example.test/', pretendToBeVisual: true });
   const { window } = dom;
@@ -42,18 +45,25 @@ export async function boot({ chrome, settings } = {}) {
     globalThis[key] = window[key];
   }
   globalThis.navigator = window.navigator;
-  globalThis.fetch = async () => {
-    throw new Error('offline');
-  };
+  // Installed before app.js runs, because widgets can fetch as they mount.
+  globalThis.fetch =
+    fetch ??
+    (async () => {
+      throw new Error('offline');
+    });
 
   if (chrome) globalThis.chrome = chrome;
   else delete globalThis.chrome;
 
   // Seeded through the storage layer rather than by writing its keys directly,
-  // so tests do not pin how settings are serialised.
-  if (settings) {
+  // so tests do not pin how either tier is serialised.
+  if (settings || local) {
     const { createStorage } = await import(`${SRC}/core/storage.js`);
-    await createStorage().replaceAll(settings);
+    const storage = createStorage();
+    if (settings) await storage.replaceAll(settings);
+    for (const [key, value] of Object.entries(local ?? {})) {
+      await storage.saveLocal(key, value);
+    }
   }
 
   await import(`${SRC}/app.js?boot=${++bootCount}`);
@@ -72,18 +82,27 @@ export async function settings() {
   return createStorage().load();
 }
 
+/** One key from the local tier, the one settings() does not cover. */
+export async function localSetting(key) {
+  const { createStorage } = await import(`${SRC}/core/storage.js`);
+  return createStorage().loadLocal(key);
+}
+
+export const section = (window, widget) =>
+  window.document.querySelector(`[data-widget="${widget}"]`);
+
 export const field = (window, widget, name) =>
-  window.document.querySelector(`[data-widget="${widget}"] [data-field="${name}"]`);
+  section(window, widget).querySelector(`[data-field="${name}"]`);
 
 export const option = (window, widget, name, value) =>
-  window.document.querySelector(
-    `[data-widget="${widget}"] [data-field="${name}"][value="${value}"]`,
-  );
+  section(window, widget).querySelector(`[data-field="${name}"][value="${value}"]`);
 
 export const view = (window, widget) =>
   window.document.querySelector(`[data-widget-root="${widget}"]`);
 
-export const isHidden = (element) => element.closest('[data-field-wrap]').classList.contains('hidden');
+/** Hidden as rendered: a field through its wrapper, anything else on its own. */
+export const isHidden = (element) =>
+  (element.closest('[data-field-wrap]') ?? element).classList.contains('hidden');
 
 export async function set(element, value, event = 'change') {
   if (element.type === 'checkbox' || element.type === 'radio') element.checked = value;
@@ -93,12 +112,48 @@ export async function set(element, value, event = 'change') {
 }
 
 /**
+ * Counts the intervals that are currently live, so a test can assert a widget
+ * starts one and clears it again. Install before boot() to see the ones a
+ * widget starts as it mounts, and restore() in a finally.
+ */
+export function countIntervals() {
+  const live = new Set();
+  const [realSet, realClear] = [globalThis.setInterval, globalThis.clearInterval];
+  globalThis.setInterval = (...args) => {
+    const id = realSet(...args);
+    live.add(id);
+    return id;
+  };
+  globalThis.clearInterval = (id) => {
+    live.delete(id);
+    return realClear(id);
+  };
+  return {
+    get size() {
+      return live.size;
+    },
+    restore() {
+      globalThis.setInterval = realSet;
+      globalThis.clearInterval = realClear;
+    },
+  };
+}
+
+/**
  * A chrome.* stub that enforces the real sync per-item quota, so tests can
  * tell the difference between the synced and local storage tiers.
  */
-export function fakeChrome({ sync = {}, local = {}, syncQuotaBytes = 8192 } = {}) {
+export function fakeChrome({
+  sync = {},
+  local = {},
+  syncQuotaBytes = 8192,
+  hosts = [],
+  grant = true,
+} = {}) {
   const searches = [];
   const reads = [];
+  const requested = [];
+  const held = new Set(hosts);
 
   const area = (store, quota, track) => ({
     async get(keys) {
@@ -130,11 +185,21 @@ export function fakeChrome({ sync = {}, local = {}, syncQuotaBytes = 8192 } = {}
         sync: area(sync, syncQuotaBytes, false),
         local: area(local, 0, true),
       },
-      runtime: { getManifest: () => ({ version: '9.9.9' }), lastError: null },
+      runtime: { getManifest: () => ({ ...MANIFEST, version: '9.9.9' }), lastError: null },
       search: {
         query(options, callback) {
           searches.push(options);
           callback();
+        },
+      },
+      permissions: {
+        async contains({ origins }) {
+          return origins.every((origin) => held.has(origin));
+        },
+        async request({ origins }) {
+          requested.push(...origins);
+          if (grant) for (const origin of origins) held.add(origin);
+          return grant;
         },
       },
     },
@@ -143,5 +208,7 @@ export function fakeChrome({ sync = {}, local = {}, syncQuotaBytes = 8192 } = {}
     searches,
     /** Keys read from the local tier, to assert lazy loading. */
     reads,
+    /** Match patterns passed to chrome.permissions.request. */
+    requested,
   };
 }

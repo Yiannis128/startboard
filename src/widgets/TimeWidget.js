@@ -28,7 +28,6 @@ export class TimeWidget extends Widget {
 
   constructor(config) {
     super(config);
-    this.timer = null;
     this.units = {};
     this.periodElement = null;
   }
@@ -40,9 +39,7 @@ export class TimeWidget extends Widget {
   }
 
   render() {
-    // Cleared unconditionally so repeated renders can never stack intervals.
-    clearInterval(this.timer);
-    this.timer = null;
+    this.repeat();
 
     const show = this.get('show');
     this.root.classList.toggle('hidden', !show);
@@ -61,12 +58,7 @@ export class TimeWidget extends Widget {
     this.periodElement = this.display.querySelector('[data-period]');
 
     this.tick();
-    this.timer = setInterval(() => this.tick(), 1000);
-  }
-
-  destroy() {
-    clearInterval(this.timer);
-    this.timer = null;
+    this.repeat(() => this.tick(), 1000);
   }
 
   tick() {

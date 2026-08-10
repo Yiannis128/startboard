@@ -1,3 +1,9 @@
+// Read from the manifest rather than repeated here: a pattern chrome.permissions
+// is asked for but the manifest does not declare is rejected outright. All of
+// them, so a second optional pattern would widen what needsHostAccess() asks
+// for - declare one only if every caller should have to hold it.
+const optionalHosts = () => chrome.runtime.getManifest().optional_host_permissions ?? [];
+
 /** Chrome extension APIs, with PWA fallbacks. */
 export const Runtime = {
   isExtension() {
@@ -19,6 +25,28 @@ export const Runtime = {
   // app.js only wires the control that calls this when isExtension() is true.
   openSettings() {
     chrome.tabs.update({ url: 'chrome://settings/appearance' });
+  },
+
+  /**
+   * Whether the optional host permission is still to be asked for. False in the
+   * PWA: a page cannot be granted one, so there is nothing to gate on.
+   */
+  async needsHostAccess() {
+    if (!Runtime.isExtension() || !chrome.permissions?.contains) return false;
+    const origins = optionalHosts();
+    if (origins.length === 0) return false;
+    return !(await chrome.permissions.contains({ origins }));
+  },
+
+  /** Must be called from a user gesture. @returns {boolean} false if declined. */
+  async requestHostAccess() {
+    if (!Runtime.isExtension() || !chrome.permissions?.request) return false;
+    try {
+      return await chrome.permissions.request({ origins: optionalHosts() });
+    } catch (error) {
+      console.warn('Host permission request failed:', error);
+      return false;
+    }
   },
 
   /**
