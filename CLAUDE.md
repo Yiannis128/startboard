@@ -45,10 +45,17 @@ any one alone passes. A process per file is also the isolation the tests assume:
 module-level state in `src/` starts fresh and one file's stubs cannot leak into
 the next. Do not "simplify" this back to a bare `bun test`.
 
+That accumulation has a cliff, and it is closer than it looks: a file of ~16
+`boot()` calls runs in about three seconds, and the seventeenth took the same
+file to forty. Split by subject rather than growing one file — the per-file
+process is what resets it.
+
 - `test/harness.mjs` — boots the real app in jsdom with browser globals
   installed, plus `fakeChrome()`, a `chrome.*` stub that enforces the real 8KB
   sync per-item quota so the two storage tiers can be told apart
-- `test/pwa.test.mjs`, `test/extension.test.mjs` — the same app under each runtime
+- `test/pwa.test.mjs`, `test/extension.test.mjs` — the same app under each
+  runtime
+- `test/status.test.mjs` — the status widget, enough boots to want its own file
 - `test/migrations.test.mjs`, `test/sw.test.mjs`
 
 There is no browser in CI, so nothing here covers layout, animation, drag and
@@ -96,9 +103,14 @@ export class TimeWidget extends Widget {
   mount() {}     // once: build this.root, wire this.section extras
   render() {}    // after mount, and after every settings change
   onChange() {}  // side effects that need to know which field changed
-  destroy() {}   // release timers and listeners
+  destroy() {}   // release listeners; call super.destroy() if you override it
 }
 ```
+
+A widget that ticks calls `this.repeat(fn, ms)` rather than owning a timer:
+`repeat()` with no arguments stops it, every call replaces the previous one, and
+the base `destroy()` clears it — so a widget that renders conditionally cannot
+stack tickers or leave one running.
 
 The framework does the rest: it renders the sidebar controls from `schema`,
 reflects stored values into them, persists edits, and calls `render()`
@@ -115,7 +127,8 @@ build, not a step to follow.
 Field types live in `core/fields.js`: `boolean`, `text`, `select`, `range`,
 `choice` (radio tiles with an optional colour swatch, thumbnail, or custom
 HTML), and `value` for state that persists but renders no control. Fields also
-take `visibleWhen(get)` to show or hide themselves based on sibling fields,
+take `visibleWhen(get, widget)` to show or hide themselves based on sibling
+fields — or on runtime state the widget holds, as `status.show` does,
 `validate(value)` to block invalid input with an inline error, `collapsible` to
 wrap themselves in an accordion, and `live` to commit on every keystroke instead
 of on blur. Use `live` sparingly: each keystroke is a storage write, and
@@ -207,23 +220,25 @@ The way out is a Chrome host permission, which exempts the fetch from CORS so
 the first attempt succeeds and CORP never applies (it is only ever checked on
 no-cors requests). `manifest.json` declares `optional_host_permissions:
 ["*://*/*"]` — optional, so it carries no install-time warning — and
-`Runtime.hasHostAccess()` / `requestHostAccess()` read and ask for it. An
-endpoint can be any host and Chrome grants host access by pattern, so there is
-nothing narrower to ask for.
+`Runtime.needsHostAccess()` / `requestHostAccess()` read and ask for it, taking
+the pattern from the manifest rather than repeating it, because a pattern the
+manifest does not declare is rejected outright. An endpoint can be any host and
+Chrome grants access by pattern, so there is nothing narrower to ask for.
 
 The whole settings section is **gated** on holding it: until then the section is
 a "Grant Permission" button and an explanation, with the show toggle, the
-placement picker and the endpoint editor all hidden. Gating the one entry point
-is why nothing downstream needs an ungranted case — `probe()`, the tiles and the
-cache can all assume a reply is readable.
+placement picker and the endpoint editor all hidden.
 
-`granted` lives at module scope rather than on the instance because the schema
-is static and its `visibleWhen` has to read it; that is what lets the framework
-hide the two fields, leaving the widget its own two blocks. It starts
-optimistic so the PWA, where `hasHostAccess()` is true because there is nothing
-to hold, never flashes a prompt it could not honour, and the check runs
-un-awaited from `mount()` — it decides what the settings section offers, and the
-sidebar starts closed.
+That gate is a prompt, not an invariant. `status.items` is synced while the
+permission is per-install, so "endpoints configured, permission not held" is the
+ordinary state of a second machine — there the panel shows grey dots until the
+user grants, and the rows are behind the same button. Do not write anything
+downstream against "a reply is always readable".
+
+`this.gated` is set from an un-awaited check in `mount()`: it decides what the
+settings section offers, and the sidebar starts closed, so it must not hold up
+the first paint. The two fields hide themselves through `visibleWhen`, which is
+handed the widget for exactly this — state the widget only learns at runtime.
 
 None of this reaches the PWA, where a page cannot be granted anything and the
 two-attempt probe is all there is: a CORP-protected endpoint reads as grey

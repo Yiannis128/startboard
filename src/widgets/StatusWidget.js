@@ -8,8 +8,6 @@ const MAX_ENDPOINTS = 10;
 const DEFAULT_INTERVAL = 10;
 const MAX_INTERVAL = 1440;
 const PROBE_TIMEOUT_MS = 8000;
-// Each endpoint is due on its own schedule; this is only how often that is
-// looked at, so one timer covers the whole list.
 const TICK_MS = 15_000;
 const CACHE_KEY = 'states';
 
@@ -19,11 +17,7 @@ const DRAG_SLOP_PX = 4;
 
 const SPREAD = 'flex flex-row flex-wrap justify-center gap-2';
 
-/**
- * Where the panel sits, written out per placement because Tailwind only emits
- * classes it finds verbatim. The dot faces the anchored edge, and trails when
- * the panel spreads across and has no side to face.
- */
+// Written out per placement because Tailwind only emits classes it finds verbatim.
 const LAYOUTS = {
   top: { panel: `fixed top-4 left-4 right-4 z-30 ${SPREAD}` },
   // Stops short of the right edge, where the settings and donate buttons live.
@@ -32,7 +26,6 @@ const LAYOUTS = {
   right: { panel: 'fixed top-4 right-4 z-30 flex flex-col items-end gap-2' },
 };
 
-// Spelled out per state, for the same reason as the layouts.
 const STATES = {
   checking: { dot: 'bg-warning animate-pulse', text: 'Checking' },
   up: { dot: 'bg-success', text: 'Responding' },
@@ -42,13 +35,12 @@ const STATES = {
   down: { dot: 'bg-base-content opacity-40', text: 'Not responding' },
 };
 
+// Built on first use, so a default setup - which paints no tiles - never builds
+// one. Locale default, so it can disagree with the time widget's 24-hour setting.
 let clock = null;
 const at = (time) =>
   (clock ??= new Intl.DateTimeFormat(undefined, { timeStyle: 'short' })).format(time);
 
-// Only rendered in the PWA, which cannot be granted host access - so its checks
-// are limited in a way worth stating in the settings rather than leaving the user
-// to wonder at a grey dot.
 const WEB_LIMITS = `
   <div data-web-limits class="rounded-lg border border-warning p-2 mb-3">
     <p class="text-xs font-semibold text-warning">Limited on the web</p>
@@ -59,44 +51,42 @@ const WEB_LIMITS = `
     </p>
   </div>`;
 
-// Whether host access is held, as answered by the check in mount(). Module
-// scope, not instance, because the static schema's visibleWhen has to read it -
-// which is what puts the whole settings section behind the permission.
-// Optimistic, so the PWA, where there is nothing to hold, never flashes a
-// prompt it could not honour.
-let granted = true;
+/** The editor is usable once the permission is held and the panel is on. */
+const editable = (get, widget) => !widget.gated && get('show');
 
-/** Whether an endpoint answers, and with what if it will say. */
+/**
+ * Whether an endpoint answers, and with what if it will say. The deadline spans
+ * both attempts, and is cleared rather than left to fire: `AbortSignal.timeout`
+ * would keep a timer alive per probe for as long as it had left to run.
+ */
 async function probe(url) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
-  const request = { signal: controller.signal, cache: 'no-store' };
+  const deadline = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
   try {
-    try {
-      // First, because a readable status is the only thing that separates a
-      // service answering with an error from one answering normally.
-      const response = await fetch(url, { ...request, mode: 'cors' });
-      const detail = `HTTP ${response.status}`;
-      return response.status < 400 ? { state: 'up', detail } : { state: 'error', detail };
-    } catch {
-      // Unreadable, which a service that sends no CORS headers always is.
-    }
-    if (!controller.signal.aborted) {
-      try {
-        // An opaque response resolves whatever the status and rejects only when
-        // nothing answered, which is all such a service will give up.
-        await fetch(url, { ...request, mode: 'no-cors' });
-        return { state: 'up', detail: null };
-      } catch {
-        // Nothing answered - or the service sent
-        // `Cross-Origin-Resource-Policy: same-origin`, which blocks an opaque
-        // read outright. Only a host permission can tell those two apart.
-      }
-    }
-    return { state: 'down', detail: controller.signal.aborted ? 'Timed out' : 'No reply or blocked' };
+    return await attempt(url, controller.signal);
   } finally {
-    clearTimeout(timeout);
+    clearTimeout(deadline);
   }
+}
+
+async function attempt(url, signal) {
+  const request = { signal, cache: 'no-store' };
+  try {
+    const response = await fetch(url, { ...request, mode: 'cors' });
+    const detail = `HTTP ${response.status}`;
+    return response.status < 400 ? { state: 'up', detail } : { state: 'error', detail };
+  } catch {
+    // Unreadable, which a service sending no CORS headers always is.
+  }
+  if (!signal.aborted) {
+    try {
+      await fetch(url, { ...request, mode: 'no-cors' });
+      return { state: 'up', detail: null };
+    } catch {
+      // Nothing answered, or CORP refused the opaque read. Indistinguishable.
+    }
+  }
+  return { state: 'down', detail: signal.aborted ? 'Timed out' : 'No reply or blocked' };
 }
 
 export class StatusWidget extends Widget {
@@ -108,7 +98,7 @@ export class StatusWidget extends Widget {
       type: 'boolean',
       default: true,
       label: 'Show service status',
-      visibleWhen: () => granted,
+      visibleWhen: (get, widget) => !widget.gated,
     },
     placement: {
       type: 'select',
@@ -120,7 +110,7 @@ export class StatusWidget extends Widget {
         { value: 'bottom', label: 'Bottom' },
         { value: 'left', label: 'Left' },
       ],
-      visibleWhen: (get) => granted && get('show'),
+      visibleWhen: editable,
     },
     items: { type: 'value', default: [] },
   };
@@ -129,10 +119,11 @@ export class StatusWidget extends Widget {
     super(config);
     /** url -> { state, detail, checkedAt }, mirrored into the local tier. */
     this.states = new Map();
-    this.timer = null;
     this.editingIndex = null;
     this.drag = null;
-    this.restored = null;
+    this.restoring = null;
+    /** Whether the host permission is still to be asked for. Set in mount(). */
+    this.gated = false;
   }
 
   /** Stored endpoints, filtered down to ones that are safe to fetch and link. */
@@ -224,21 +215,12 @@ export class StatusWidget extends Widget {
     this.grantBlock = this.section.querySelector('[data-grant]');
 
     this.addButton.addEventListener('click', () => this.openDialog());
-    this.section.querySelector('[data-grant-access]').addEventListener('click', async () => {
-      granted = await Runtime.requestHostAccess();
-      this.refresh();
-    });
-
-    // Un-awaited: this decides what the settings section offers, and the sidebar
-    // starts closed, so it must not hold up the first paint of the page.
-    Runtime.hasHostAccess().then((allowed) => {
-      if (allowed === granted) return;
-      granted = allowed;
-      this.refresh();
-    });
     this.root.querySelector('[data-save]').addEventListener('click', () => this.save());
     this.root.querySelector('[data-cancel]').addEventListener('click', () => this.closeDialog());
-    this.root.querySelector('[data-recheck]').addEventListener('click', () => this.recheck());
+    this.root.querySelector('[data-recheck]').addEventListener('click', () => {
+      this.hideMenu();
+      this.recheck();
+    });
     this.root.querySelector('[data-edit]').addEventListener('click', () => {
       this.hideMenu();
       this.openDialog(this.editingIndex);
@@ -262,16 +244,28 @@ export class StatusWidget extends Widget {
     this.rows.addEventListener('touchmove', (event) => {
       if (this.drag?.phase === 'sorting') event.preventDefault();
     }, { passive: false });
+
+    this.section.querySelector('[data-grant-access]').addEventListener('click', async () => {
+      this.gated = !(await Runtime.requestHostAccess());
+      this.refresh();
+    });
+    // Un-awaited: mount() is on the critical path, and the sidebar starts closed.
+    Runtime.needsHostAccess().then((needed) => {
+      if (needed === this.gated) return;
+      this.gated = needed;
+      this.refresh();
+    });
   }
 
   render() {
-    // Cleared unconditionally so repeated renders can never stack tickers.
-    clearInterval(this.timer);
-    this.timer = null;
+    this.repeat();
 
     const items = this.items();
-    this.renderRows(items);
-    this.gate();
+    const editing = editable((name) => this.get(name), this);
+    this.endpoints.classList.toggle('hidden', !editing);
+    this.grantBlock.classList.toggle('hidden', !this.gated);
+    // Skipped while the block is hidden; flipping either gate renders again.
+    if (editing) this.renderRows(items);
 
     const layout = LAYOUTS[this.get('placement')] ?? LAYOUTS.right;
     const show = this.get('show');
@@ -281,51 +275,57 @@ export class StatusWidget extends Widget {
 
     this.forget(items);
     this.panel.replaceChildren(...items.map((item, index) => this.tile(item, index, layout)));
-    this.paint();
 
     if (items.length === 0) return;
     // Un-awaited: a probe is a network round trip, and app.js reveals the page
     // only once every widget has mounted.
     this.sweep(items);
-    this.timer = setInterval(() => this.sweep(), TICK_MS);
-  }
-
-  destroy() {
-    clearInterval(this.timer);
-    this.timer = null;
+    this.repeat(() => this.sweep(), TICK_MS);
   }
 
   /** Probes the endpoints whose refresh rate has come round. */
-  async sweep(items = this.items()) {
+  async sweep(items) {
     if (document.hidden) return;
-    this.restored ??= this.restore();
-    await this.restored;
+    items ??= this.items();
+    this.restoring ??= this.restore(items);
+    await this.restoring;
 
     const now = Date.now();
-    for (const item of items) {
+    const due = items.filter((item) => {
       const entry = this.states.get(item.url);
-      if (entry?.state === 'checking') continue;
-      if (entry && now - entry.checkedAt < item.interval * 60_000) continue;
-      this.check(item);
+      if (entry?.state === 'checking') return false;
+      return !entry || now - entry.checkedAt >= item.interval * 60_000;
+    });
+    if (due.length === 0) return;
+
+    await Promise.all(due.map((item) => this.check(item)));
+    await this.remember(items);
+  }
+
+  /** Loads the cached results for the endpoints that are still configured. */
+  async restore(items) {
+    const cached = await this.getLocal(CACHE_KEY);
+    if (typeof cached !== 'object' || cached === null) return;
+    const live = new Set(items.map((item) => item.url));
+    for (const [url, entry] of Object.entries(cached)) {
+      // A state name an older build wrote has no dot to paint, and a probe that
+      // started while this read was in flight owns its entry.
+      if (!live.has(url) || !STATES[entry?.state] || this.states.has(url)) continue;
+      this.states.set(url, entry);
+      this.paint(url);
     }
   }
 
   /**
-   * Loads the cached results. A new tab page lives for seconds, so without
-   * these the refresh rate would gate nothing and every endpoint would be
-   * re-probed on every tab the user opens.
+   * One write per sweep rather than per probe, holding only endpoints that still
+   * exist - otherwise the cache grows by every url the user has ever configured.
    */
-  async restore() {
-    const cached = await this.getLocal(CACHE_KEY);
-    if (typeof cached !== 'object' || cached === null) return;
-    for (const [url, entry] of Object.entries(cached)) {
-      // A cached "checking" would read as in flight for good, and an unknown
-      // state has no dot to paint.
-      if (entry?.state === 'checking' || !STATES[entry?.state]) continue;
-      if (!Number.isFinite(entry.checkedAt) || this.states.has(url)) continue;
-      this.states.set(url, entry);
-    }
-    this.paint();
+  async remember(items) {
+    const live = new Set(items.map((item) => item.url));
+    const settled = [...this.states].filter(
+      ([url, entry]) => live.has(url) && entry.state !== 'checking',
+    );
+    await this.setLocal(CACHE_KEY, Object.fromEntries(settled));
   }
 
   async check(item) {
@@ -334,22 +334,22 @@ export class StatusWidget extends Widget {
     const result = await probe(item.url);
     this.states.set(item.url, { ...result, checkedAt: Date.now() });
     this.paint(item.url);
-    const settled = [...this.states].filter(([, entry]) => entry.state !== 'checking');
-    await this.setLocal(CACHE_KEY, Object.fromEntries(settled));
   }
 
   paint(url) {
     const selector = url ? `[data-endpoint="${CSS.escape(url)}"]` : '[data-endpoint]';
-    for (const tile of this.panel.querySelectorAll(selector)) {
-      const entry = this.states.get(tile.dataset.endpoint) ?? { state: 'checking' };
-      const state = STATES[entry.state];
-      const dot = tile.querySelector('[data-dot]');
-      dot.className = `w-2.5 h-2.5 rounded-full shrink-0 ${state.dot}`;
-      dot.setAttribute('aria-label', state.text);
-      const detail = entry.detail ? ` (${entry.detail})` : '';
-      const checked = entry.state === 'checking' ? '' : ` · ${at(entry.checkedAt)}`;
-      tile.title = `${state.text}${detail}${checked}`;
-    }
+    for (const tile of this.panel.querySelectorAll(selector)) this.dress(tile);
+  }
+
+  dress(tile) {
+    const entry = this.states.get(tile.dataset.endpoint) ?? { state: 'checking' };
+    const state = STATES[entry.state];
+    const dot = tile.querySelector('[data-dot]');
+    dot.className = `w-2.5 h-2.5 rounded-full shrink-0 ${state.dot}`;
+    dot.setAttribute('aria-label', state.text);
+    const detail = entry.detail ? ` (${entry.detail})` : '';
+    const checked = entry.state === 'checking' ? '' : ` · ${at(entry.checkedAt)}`;
+    tile.title = `${state.text}${detail}${checked}`;
   }
 
   tile(item, index, layout) {
@@ -369,6 +369,7 @@ export class StatusWidget extends Widget {
     name.textContent = item.name;
 
     tile.append(...(layout.dotFirst ? [dot, name] : [name, dot]));
+    this.dress(tile);
     tile.addEventListener('contextmenu', (event) => {
       event.preventDefault();
       this.showMenu(event, index);
@@ -379,16 +380,6 @@ export class StatusWidget extends Widget {
   renderRows(items) {
     this.rows.replaceChildren(...items.map((item, index) => this.row(item, index)));
     this.addButton.disabled = items.length >= MAX_ENDPOINTS;
-  }
-
-  /**
-   * The editor is behind the permission, so a probe can always read its reply
-   * and nothing downstream has to handle the ungranted case. The schema fields
-   * hide themselves through `visibleWhen`.
-   */
-  gate() {
-    this.endpoints.classList.toggle('hidden', !granted || !this.get('show'));
-    this.grantBlock.classList.toggle('hidden', granted);
   }
 
   row(item, index) {
@@ -522,12 +513,13 @@ export class StatusWidget extends Widget {
     await this.commit(items);
   }
 
-  recheck() {
-    this.hideMenu();
-    const item = this.editingIndex === null ? null : this.items()[this.editingIndex];
+  async recheck() {
+    const items = this.items();
+    const item = this.editingIndex === null ? null : items[this.editingIndex];
     if (!item) return;
     this.states.delete(item.url);
-    this.check(item);
+    await this.check(item);
+    await this.remember(items);
   }
 
   async commit(items) {

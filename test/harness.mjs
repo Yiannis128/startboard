@@ -6,6 +6,9 @@ import { fileURLToPath } from 'node:url';
 export const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const SRC = path.join(ROOT, 'src');
 
+/** The real manifest, so a stub cannot claim permissions it does not declare. */
+export const MANIFEST = JSON.parse(fs.readFileSync(path.join(ROOT, 'manifest.json'), 'utf-8'));
+
 // So a seed meaning "already current" stays current when a migration lands,
 // rather than quietly becoming a stale document that gets migrated.
 export { SCHEMA_VERSION } from '../src/core/migrations.js';
@@ -79,21 +82,27 @@ export async function settings() {
   return createStorage().load();
 }
 
+/** One key from the local tier, the one settings() does not cover. */
+export async function localSetting(key) {
+  const { createStorage } = await import(`${SRC}/core/storage.js`);
+  return createStorage().loadLocal(key);
+}
+
 export const section = (window, widget) =>
   window.document.querySelector(`[data-widget="${widget}"]`);
 
 export const field = (window, widget, name) =>
-  window.document.querySelector(`[data-widget="${widget}"] [data-field="${name}"]`);
+  section(window, widget).querySelector(`[data-field="${name}"]`);
 
 export const option = (window, widget, name, value) =>
-  window.document.querySelector(
-    `[data-widget="${widget}"] [data-field="${name}"][value="${value}"]`,
-  );
+  section(window, widget).querySelector(`[data-field="${name}"][value="${value}"]`);
 
 export const view = (window, widget) =>
   window.document.querySelector(`[data-widget-root="${widget}"]`);
 
-export const isHidden = (element) => element.closest('[data-field-wrap]').classList.contains('hidden');
+/** Hidden as rendered: a field through its wrapper, anything else on its own. */
+export const isHidden = (element) =>
+  (element.closest('[data-field-wrap]') ?? element).classList.contains('hidden');
 
 export async function set(element, value, event = 'change') {
   if (element.type === 'checkbox' || element.type === 'radio') element.checked = value;
@@ -176,7 +185,7 @@ export function fakeChrome({
         sync: area(sync, syncQuotaBytes, false),
         local: area(local, 0, true),
       },
-      runtime: { getManifest: () => ({ version: '9.9.9' }), lastError: null },
+      runtime: { getManifest: () => ({ ...MANIFEST, version: '9.9.9' }), lastError: null },
       search: {
         query(options, callback) {
           searches.push(options);

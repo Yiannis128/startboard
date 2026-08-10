@@ -1,8 +1,17 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  boot, fire, set, settled, fakeChrome, field, option, section, view, isHidden, SCHEMA_VERSION,
+  boot, fire, set, settled, fakeChrome, field, option, section, view, isHidden,
+  MANIFEST, SCHEMA_VERSION,
 } from './harness.mjs';
+
+/** The section is either open for business or replaced by the grant prompt. */
+function assertGate(window, locked) {
+  const sidebar = section(window, 'status');
+  assert.equal(isHidden(field(window, 'status', 'show')), locked, 'the show toggle');
+  assert.equal(isHidden(sidebar.querySelector('[data-endpoints]')), locked, 'the editor');
+  assert.equal(isHidden(sidebar.querySelector('[data-grant]')), !locked, 'the grant prompt');
+}
 
 test('uses Chrome runtime APIs and the synced storage tier', async () => {
   const env = fakeChrome();
@@ -104,47 +113,35 @@ test('uploads are read lazily, only when selected', async () => {
 test('the whole status section is gated until host access is granted', async () => {
   const env = fakeChrome();
   const window = await boot({ chrome: env.api });
-  const sidebar = section(window, 'status');
-  const endpoints = sidebar.querySelector('[data-endpoints]');
-  const grant = sidebar.querySelector('[data-grant]');
+  assertGate(window, true);
 
-  assert.ok(isHidden(field(window, 'status', 'show')), 'even the toggle is locked away');
-  assert.ok(endpoints.classList.contains('hidden'), 'and the endpoint editor with it');
-  assert.ok(!grant.classList.contains('hidden'), 'the explanation takes their place');
-
-  sidebar.querySelector('[data-grant-access]').click();
+  section(window, 'status').querySelector('[data-grant-access]').click();
   await settled();
 
-  assert.deepEqual(env.requested, ['*://*/*']);
-  assert.ok(!isHidden(field(window, 'status', 'show')), 'granting unlocks the section');
-  assert.ok(!endpoints.classList.contains('hidden'));
-  assert.ok(grant.classList.contains('hidden'));
+  // Asked for exactly what the manifest declares: a pattern it does not carry is
+  // rejected outright, which would lock the section for good.
+  assert.deepEqual(env.requested, MANIFEST.optional_host_permissions);
+  assertGate(window, false);
 });
 
 test('a declined grant leaves the section locked', async () => {
   const env = fakeChrome({ grant: false });
   const window = await boot({ chrome: env.api });
-  const sidebar = section(window, 'status');
 
-  sidebar.querySelector('[data-grant-access]').click();
+  section(window, 'status').querySelector('[data-grant-access]').click();
   await settled();
 
-  assert.deepEqual(env.requested, ['*://*/*']);
-  assert.ok(isHidden(field(window, 'status', 'show')));
-  assert.ok(sidebar.querySelector('[data-endpoints]').classList.contains('hidden'));
-  assert.ok(!sidebar.querySelector('[data-grant]').classList.contains('hidden'));
+  assert.deepEqual(env.requested, MANIFEST.optional_host_permissions);
+  assertGate(window, true);
 });
 
 test('an already-granted extension opens the section without prompting', async () => {
-  const env = fakeChrome({ hosts: ['*://*/*'] });
+  const env = fakeChrome({ hosts: MANIFEST.optional_host_permissions });
   const window = await boot({ chrome: env.api });
-  const sidebar = section(window, 'status');
 
-  assert.ok(!isHidden(field(window, 'status', 'show')));
-  assert.ok(!sidebar.querySelector('[data-endpoints]').classList.contains('hidden'));
-  assert.ok(sidebar.querySelector('[data-grant]').classList.contains('hidden'));
+  assertGate(window, false);
   assert.deepEqual(env.requested, []);
-  assert.equal(sidebar.querySelector('[data-web-limits]'), null,
+  assert.equal(section(window, 'status').querySelector('[data-web-limits]'), null,
     'the web-only CORS warning has no place here');
 });
 

@@ -202,11 +202,15 @@ export function bindField(section, key, field, commit) {
   }
 }
 
-/** Shows or hides fields whose `visibleWhen` predicate depends on other fields. */
-export function applyVisibility(section, schema, get) {
+/**
+ * Shows or hides fields whose `visibleWhen` predicate says so. The predicate
+ * takes the field getter and the widget, so a field can also depend on state
+ * the widget only learns at runtime.
+ */
+export function applyVisibility(section, schema, get, widget) {
   for (const [name, field] of Object.entries(schema)) {
     if (!field.visibleWhen) continue;
     const wrap = section.querySelector(`[data-field-wrap="${CSS.escape(name)}"]`);
-    wrap?.classList.toggle('hidden', !field.visibleWhen(get));
+    wrap?.classList.toggle('hidden', !field.visibleWhen(get, widget));
   }
 }

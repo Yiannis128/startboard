@@ -1,6 +1,6 @@
-// Chrome grants host access per pattern, and an endpoint can be any host, so
-// there is nothing narrower to ask for than the manifest's optional pattern.
-const ALL_HOSTS = '*://*/*';
+// Read from the manifest rather than repeated here: a pattern chrome.permissions
+// is asked for but the manifest does not declare is rejected outright.
+const optionalHosts = () => chrome.runtime.getManifest().optional_host_permissions ?? [];
 
 /** Chrome extension APIs, with PWA fallbacks. */
 export const Runtime = {
@@ -26,25 +26,21 @@ export const Runtime = {
   },
 
   /**
-   * Whether the extension may read cross-origin replies, from the manifest's
-   * optional host permissions.
-   *
-   * Chrome exempts a fetch from CORS while the permission is held, which is the
-   * only way to read a status back from a service that sends no CORS headers -
-   * and the only way at all past a `Cross-Origin-Resource-Policy: same-origin`
-   * header, which blocks an opaque no-cors read outright. True in the PWA, where
-   * there is no such permission to hold and nothing to ask for.
+   * Whether the optional host permission is still to be asked for. False in the
+   * PWA: a page cannot be granted one, so there is nothing to gate on.
    */
-  async hasHostAccess() {
-    if (!Runtime.isExtension() || !chrome.permissions?.contains) return true;
-    return chrome.permissions.contains({ origins: [ALL_HOSTS] });
+  async needsHostAccess() {
+    if (!Runtime.isExtension() || !chrome.permissions?.contains) return false;
+    const origins = optionalHosts();
+    if (origins.length === 0) return false;
+    return !(await chrome.permissions.contains({ origins }));
   },
 
-  /** Must be called from a user gesture. False if the user declines. */
+  /** Must be called from a user gesture. @returns {boolean} false if declined. */
   async requestHostAccess() {
-    if (!Runtime.isExtension() || !chrome.permissions?.request) return true;
+    if (!Runtime.isExtension() || !chrome.permissions?.request) return false;
     try {
-      return await chrome.permissions.request({ origins: [ALL_HOSTS] });
+      return await chrome.permissions.request({ origins: optionalHosts() });
     } catch (error) {
       console.warn('Host permission request failed:', error);
       return false;
