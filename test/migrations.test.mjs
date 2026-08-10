@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { boot, settings, view, SRC } from './harness.mjs';
+import { boot, settings, view, SRC, SCHEMA_VERSION } from './harness.mjs';
 
 const V1 = {
   displayMode: 'dark',
@@ -17,7 +17,7 @@ test('v1 settings migrate forward and still apply', async () => {
   const window = await boot({ settings: structuredClone(V1) });
   const after = await settings();
 
-  assert.equal(after.__version, 2);
+  assert.equal(after.__version, SCHEMA_VERSION);
   assert.equal(after['theme.mode'], 'dark');
   assert.equal(after.displayMode, undefined, 'the old key should be gone');
   assert.equal(after['shortcuts.items'][0].url, 'https://old.example');
@@ -44,18 +44,20 @@ test('migrating is idempotent', async () => {
 
 test('a fresh install starts at the current version', async () => {
   await boot();
-  assert.equal((await settings()).__version, 2);
+  assert.equal((await settings()).__version, SCHEMA_VERSION);
 });
 
 test('import replaces settings rather than merging them', async () => {
   const { Config } = await import(`${SRC}/core/config.js`);
   const { createStorage } = await import(`${SRC}/core/storage.js`);
 
-  await boot({ settings: { __version: 2, 'time.show': true, 'welcomeText.text': 'Before' } });
+  await boot({
+    settings: { __version: SCHEMA_VERSION, 'time.show': true, 'welcomeText.text': 'Before' },
+  });
 
   const config = new Config(createStorage(), {});
   await config.load();
-  await config.import({ __version: 2, 'welcomeText.text': 'After' });
+  await config.import({ __version: SCHEMA_VERSION, 'welcomeText.text': 'After' });
 
   const stored = await settings();
   assert.equal(stored['welcomeText.text'], 'After');

@@ -7,8 +7,8 @@
     "watch": "tailwindcss -i src/input.css -o src/output.css --watch",
     "build:extension": "bun scripts/build-extension.js",
     "build:pwa": "bun scripts/build-pwa.js",
-    "build:all": "bun scripts/build-extension.js && bun scripts/build-pwa.js",
-    "test": "bun scripts/build-pwa.js && bun scripts/test.js",
+    "build:all": "bun run build:extension && bun run build:pwa",
+    "test": "bun run build:pwa && bun run test:only",
     "test:only": "bun scripts/test.js"
   },
   "license": "ISC",

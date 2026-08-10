@@ -3,12 +3,17 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
-import { ROOT } from './harness.mjs';
 import { createRequire } from 'node:module';
 
-// The build stamps the manifest version into the worker's cache name, so read
-// it from the same place the build does rather than hard-coding it.
-const { readVersion } = createRequire(import.meta.url)('../scripts/lib.js');
+// Not from harness.mjs: this suite drives sw.js in a VM and never needs a DOM,
+// so it should not pull jsdom into the process.
+const ROOT = path.join(import.meta.dirname, '..');
+
+// The build stamps the manifest version into the worker's cache name, and
+// decides the precache list from SHELL_TYPES/MAX_ASSET_BYTES, so read both from
+// the same place the build does rather than hard-coding them.
+const { readVersion, listFiles, SHELL_TYPES, MAX_ASSET_BYTES } =
+  createRequire(import.meta.url)('../scripts/lib.js');
 const VERSION = readVersion(ROOT);
 
 const BUILT_SW = path.join(ROOT, 'dist', 'pwa', 'sw.js');
@@ -16,7 +21,7 @@ const BUILT_SW = path.join(ROOT, 'dist', 'pwa', 'sw.js');
 before(() => {
   assert.ok(
     fs.existsSync(BUILT_SW),
-    'dist/pwa/sw.js is missing - run `npm run build:pwa` before the tests',
+    'dist/pwa/sw.js is missing - run `bun run build:pwa` before the tests',
   );
 });
 
@@ -105,21 +110,19 @@ test('precaches the app shell but not bulk assets', async () => {
 
   // The rule, rather than a list of today's filenames: code and markup at any
   // size, everything else only when small.
-  const SHELL_TYPES = ['.html', '.css', '.js', '.webmanifest'];
-  const LIMIT = 64 * 1024;
-  const sizeOf = (entry) => fs.statSync(path.join(ROOT, 'dist', 'pwa', entry.slice(2))).size;
+  const OUT = path.join(ROOT, 'dist', 'pwa');
+  const sizeOf = (entry) => fs.statSync(path.join(OUT, entry.slice(2))).size;
 
   const oversized = [...worker.store.keys()]
     .filter((entry) => entry !== './' && !SHELL_TYPES.includes(path.extname(entry)))
-    .filter((entry) => sizeOf(entry) > LIMIT);
+    .filter((entry) => sizeOf(entry) > MAX_ASSET_BYTES);
   assert.deepEqual(oversized, [], 'no bulk asset belongs in the install payload');
 
-  // And the rule actually bites: something in the build was left out.
-  const built = fs
-    .readdirSync(path.join(ROOT, 'dist', 'pwa', 'img', 'backdrop'), { withFileTypes: true })
-    .filter((entry) => entry.isFile())
-    .map((entry) => `./img/backdrop/${entry.name}`);
-  const excluded = built.filter((entry) => sizeOf(entry) > LIMIT && !worker.store.has(entry));
+  // And the rule actually bites, over the whole build rather than one widget's
+  // asset directory: something oversized was left out.
+  const excluded = listFiles(OUT)
+    .map((file) => `./${file}`)
+    .filter((entry) => sizeOf(entry) > MAX_ASSET_BYTES && !worker.store.has(entry));
   assert.ok(excluded.length > 0, 'expected at least one oversized asset to be excluded');
 });
 

@@ -10,7 +10,9 @@
 
 const fs = require('fs');
 const path = require('path');
-const { buildCss, copyTree, listFiles, readVersion } = require('./lib');
+const {
+  buildCss, copyTree, listFiles, readVersion, SHELL_TYPES, MAX_ASSET_BYTES,
+} = require('./lib');
 
 const ROOT = path.join(__dirname, '..');
 const SRC = path.join(ROOT, 'src');
@@ -19,12 +21,6 @@ const OUT = path.join(ROOT, 'dist', 'pwa');
 const EXCLUDE = new Set(['input.css']);
 
 const PRECACHE_SKIP = new Set(['sw.js', 'LICENSE']);
-
-// The shell is code and markup, whatever its size, plus small assets. Bulk
-// content is fetched and cached on first use instead: the backdrop library
-// alone is ~13MB, and precaching it would download the lot on install.
-const SHELL_TYPES = ['.html', '.css', '.js', '.webmanifest'];
-const MAX_ASSET_BYTES = 64 * 1024;
 
 function isShell(file) {
   if (PRECACHE_SKIP.has(file)) return false;

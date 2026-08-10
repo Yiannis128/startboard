@@ -6,9 +6,11 @@ description: Installs Bun and restores dependencies from the lockfile.
 runs:
   using: composite
   steps:
+    # From packageManager in package.json, so CI and local agree and the
+    # binary cache keys on a fixed version instead of resolving "latest".
     - uses: oven-sh/setup-bun@v2
       with:
-        bun-version: latest
+        bun-version-file: package.json
 
     # setup-bun caches only the Bun binary, so without this every job
     # re-downloads every dependency.

@@ -35,12 +35,13 @@ if [ -z "$token" ]; then
   exit 1
 fi
 
+api() {
+  curl -sS -H "Authorization: Bearer $token" -H "x-goog-api-version: 2" "$@"
+}
+
 # Both endpoints answer 200 with a failure payload, so the body decides the
 # outcome, not the status code.
-upload=$(curl -sS -X PUT \
-  -H "Authorization: Bearer $token" \
-  -H "x-goog-api-version: 2" \
-  -T "$zip" \
+upload=$(api -T "$zip" \
   "https://www.googleapis.com/upload/chromewebstore/v1.1/items/$CHROME_EXTENSION_ID")
 
 echo "Upload response: $upload"
@@ -49,10 +50,7 @@ if [ "$(echo "$upload" | jq -r '.uploadState // empty')" != "SUCCESS" ]; then
   exit 1
 fi
 
-publish=$(curl -sS -X POST \
-  -H "Authorization: Bearer $token" \
-  -H "x-goog-api-version: 2" \
-  -H "Content-Length: 0" \
+publish=$(api -X POST -H "Content-Length: 0" \
   "https://www.googleapis.com/chromewebstore/v1.1/items/$CHROME_EXTENSION_ID/publish")
 
 echo "Publish response: $publish"

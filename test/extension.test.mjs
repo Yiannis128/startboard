@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { boot, fire, set, settled, fakeChrome, field, option, view, isHidden } from './harness.mjs';
+import {
+  boot, fire, set, settled, fakeChrome, field, option, view, isHidden, SCHEMA_VERSION,
+} from './harness.mjs';
 
 test('uses Chrome runtime APIs and the synced storage tier', async () => {
   const env = fakeChrome();
@@ -11,7 +13,7 @@ test('uses Chrome runtime APIs and the synced storage tier', async () => {
   assert.ok(!document.getElementById('additionalSettings').classList.contains('hidden'));
   assert.ok(isHidden(field(window, 'search', 'engine')),
     'engine picker is meaningless when Chrome owns the default engine');
-  assert.equal(env.sync.__version, 2);
+  assert.equal(env.sync.__version, SCHEMA_VERSION);
 
   await set(field(window, 'time', 'show'), true);
   assert.equal(env.sync['time.show'], true);
@@ -73,14 +75,14 @@ test('a custom backdrop upload goes to the local tier, never to sync', async () 
 
 test('uploads are read lazily, only when selected', async () => {
   const unselected = fakeChrome({
-    sync: { __version: 2 },
+    sync: { __version: SCHEMA_VERSION },
     local: { 'backdrop.customTiled': 'data:image/png;base64,UNUSED' },
   });
   await boot({ chrome: unselected.api });
   assert.deepEqual(unselected.reads, [], 'a default backdrop should read no uploads at startup');
 
   const selected = fakeChrome({
-    sync: { __version: 2, 'backdrop.mode': 'image', 'backdrop.image': 'custom-fitted' },
+    sync: { __version: SCHEMA_VERSION, 'backdrop.mode': 'image', 'backdrop.image': 'custom-fitted' },
     local: { 'backdrop.customFitted': 'data:image/png;base64,STORED' },
   });
   const window = await boot({ chrome: selected.api });

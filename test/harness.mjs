@@ -6,6 +6,10 @@ import { fileURLToPath } from 'node:url';
 export const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const SRC = path.join(ROOT, 'src');
 
+// So a seed meaning "already current" stays current when a migration lands,
+// rather than quietly becoming a stale document that gets migrated.
+export { SCHEMA_VERSION } from '../src/core/migrations.js';
+
 let bootCount = 0;
 
 /**

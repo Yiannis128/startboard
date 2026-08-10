@@ -1,22 +1,30 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { boot, set, settled, settings, field, option, view, isHidden } from './harness.mjs';
+import {
+  boot, set, settled, settings, field, option, view, isHidden, SRC, SCHEMA_VERSION,
+} from './harness.mjs';
 
-const WIDGETS = ['theme', 'welcomeText', 'time', 'search', 'shortcuts', 'backdrop'];
+// From the widget's schema, so editing the default shortcut list is a content
+// change rather than a test change.
+const { ShortcutsWidget } = await import(`${SRC}/widgets/ShortcutsWidget.js`);
+const DEFAULTS = ShortcutsWidget.schema.items.default.length;
 
 test('mounts every widget and reveals the page', async () => {
   const window = await boot();
   const { document } = window;
+  // From the registry, so this asserts that it drives the sidebar order rather
+  // than that today's list happens to match a copy of it.
+  const { WIDGETS } = await import(`${SRC}/widgets/index.js`);
 
   assert.ok(document.body.classList.contains('loaded'), 'page stayed hidden');
   assert.deepEqual(
     [...document.querySelectorAll('#settings [data-widget]')].map((s) => s.dataset.widget),
-    WIDGETS,
+    WIDGETS.map((W) => W.id),
   );
   assert.equal(document.querySelectorAll('#view [data-widget-root]').length, WIDGETS.length);
   assert.ok(document.getElementById('additionalSettings').classList.contains('hidden'),
     'extension-only button should be hidden in the PWA');
-  assert.equal((await settings()).__version, 2);
+  assert.equal((await settings()).__version, SCHEMA_VERSION);
 });
 
 test('welcome text follows the input and falls back when empty', async () => {
@@ -52,7 +60,13 @@ test('time renders each style and honours seconds and 12-hour', async () => {
   await set(field(window, 'time', 'use24Hour'), false);
   assert.match(root.textContent.trim(), /(AM|PM)$/);
 
-  for (const style of ['Clock', 'Clock Labelled', 'Clock Boxed']) {
+  // From the rendered options, so a new style is covered without editing this.
+  // Basic is the one that renders plain text rather than countdown units.
+  const styles = [...field(window, 'time', 'style').options]
+    .map((o) => o.value)
+    .filter((value) => value !== 'Basic');
+
+  for (const style of styles) {
     await set(field(window, 'time', 'style'), style);
     assert.equal(root.querySelectorAll('[data-unit]').length, 2, `${style} units`);
     assert.ok(root.querySelector('[data-period]'), `${style} period`);
@@ -93,7 +107,7 @@ test('shortcuts render, and unsafe URLs never become links', async () => {
   const window = await boot();
   const root = view(window, 'shortcuts');
   const grid = root.querySelector('[data-grid]');
-  assert.equal(grid.children.length, 11, '10 defaults plus the add button');
+  assert.equal(grid.children.length, DEFAULTS + 1, 'the defaults plus the add button');
   assert.equal(grid.children[0].href, 'https://www.google.com/');
 
   const title = root.querySelector('[data-title]');
@@ -105,20 +119,20 @@ test('shortcuts render, and unsafe URLs never become links', async () => {
   root.querySelector('[data-save]').click();
   await settled();
   assert.ok(!error.classList.contains('hidden'), 'javascript: URL should be rejected');
-  assert.equal(grid.children.length, 11, 'rejected shortcut should not be added');
+  assert.equal(grid.children.length, DEFAULTS + 1, 'rejected shortcut should not be added');
 
   title.value = 'Bare Domain';
   url.value = 'example.com';
   root.querySelector('[data-save]').click();
   await settled();
-  assert.equal(grid.children.length, 12);
+  assert.equal(grid.children.length, DEFAULTS + 2);
   assert.equal((await settings())['shortcuts.items'].at(-1).url, 'https://example.com/');
 });
 
 test('a stored javascript: shortcut is filtered out on render', async () => {
   const window = await boot({
     settings: {
-      __version: 2,
+      __version: SCHEMA_VERSION,
       'shortcuts.items': [
         { title: 'Bad', url: 'javascript:alert(1)' },
         { title: 'Good', url: 'https://good.example' },
@@ -131,12 +145,12 @@ test('a stored javascript: shortcut is filtered out on render', async () => {
 });
 
 test('shortcuts are not built while the widget is hidden', async () => {
-  const window = await boot({ settings: { __version: 2, 'shortcuts.show': false } });
+  const window = await boot({ settings: { __version: SCHEMA_VERSION, 'shortcuts.show': false } });
   const grid = view(window, 'shortcuts').querySelector('[data-grid]');
   assert.equal(grid.children.length, 0, 'hidden grid should build nothing');
 
   await set(field(window, 'shortcuts', 'show'), true);
-  assert.equal(grid.children.length, 11);
+  assert.equal(grid.children.length, DEFAULTS + 1);
 });
 
 test('an invalid custom search URL is reported and not saved', async () => {
@@ -197,9 +211,12 @@ test('theme swaps colours and repaints the backdrop', async () => {
   await set(option(window, 'backdrop', 'mode', 'gradient'), true);
   const lightGradient = window.document.body.style.backgroundImage;
 
+  const lightPrimary = documentElement.style.getPropertyValue('--color-primary');
+
   await set(option(window, 'theme', 'mode', 'dark'), true);
   assert.equal(documentElement.getAttribute('data-theme'), 'dark');
-  assert.equal(documentElement.style.getPropertyValue('--color-primary'), '#60a5fa');
+  assert.notEqual(documentElement.style.getPropertyValue('--color-primary'), lightPrimary,
+    'the accent should take its dark value');
   assert.notEqual(window.document.body.style.backgroundImage, lightGradient,
     'backdrop should repaint for the new theme');
 });

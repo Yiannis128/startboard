@@ -19,7 +19,7 @@ development machine.
 - `bun run build:pwa` → `dist/pwa/`
 - `bun run build:all` — both
 - `bun run watch` — rebuild CSS on change
-- `bun test` — the test suite
+- `bun run test` — the test suite (not `bun test`; see Tests below)
 
 The build scripts compile the CSS themselves (`buildCss` in `scripts/lib.js`)
 rather than chaining a package script, so `node scripts/build-pwa.js` works
@@ -233,30 +233,36 @@ local storage.
 
 ## Workflows
 
-- `test.yml` — pull requests only: builds both targets, runs the suite
-- `build.yml` — master, and callable via `workflow_call`; builds, runs the suite,
-  uploads the extension zip, exposes the version as an output
-- `deploy-pwa.yml` — master: deploys `dist/pwa` to GitHub Pages
-- `release.yml` — on release creation: calls `build.yml`, attaches the zip to the
-  release, publishes to the Chrome Web Store
+- `build.yml` — pull requests, master, and callable via `workflow_call`. Builds
+  both targets, runs the suite, uploads the extension zip; on a master push it
+  also deploys `dist/pwa` to GitHub Pages.
+- `release.yml` — on release creation: checks the tag against the manifest,
+  calls `build.yml`, attaches the zip to the release, publishes to the Chrome
+  Web Store.
 
-`test.yml` stays off master because `build.yml` already runs the same suite
-there; both would build the same commit twice. `build.yml` runs the tests so
-that `release.yml`, which calls it, cannot publish code the suite rejects.
+One workflow does the building, so a PR, a master push and a release all run the
+same steps, and Pages only ever gets a build the suite passed. The Pages deploy
+is a separate job so its `pages` concurrency group can decline to cancel a
+deployment already going out, while the build job's own group still cancels
+superseded runs. The Pages steps are skipped unless the event is a master push,
+which is why they sit in a job holding `pages: write`.
 
 Checkout, Bun, the dependency cache, and `bun install` live in the composite
 action at `.github/actions/setup`. Checkout itself has to stay in each caller —
-a local action cannot be resolved before the repository is on disk.
+a local action cannot be resolved before the repository is on disk. Bun's
+version comes from `packageManager` in `package.json` rather than `latest`, so
+CI cannot drift onto a different release than the one used locally.
 
 ## Releasing
 
 `manifest.json` is the single source of version truth, and `readVersion` in
-`scripts/lib.js` is its only reader — CI asks `bun scripts/version.js` rather
+`scripts/lib.js` is its only reader — CI asks `node scripts/version.js` rather
 than parsing the file itself. `readVersion` fails when `package.json` disagrees,
 so the two cannot drift. Bump both, commit, then create a release tagged
 `v<version>`; `release.yml` refuses to publish when the tag disagrees with the
-build, so a forgotten bump fails the release instead of shipping a mislabelled
-extension.
+manifest, so a forgotten bump fails the release instead of shipping a
+mislabelled extension. That check runs beside the build rather than after it, so
+a bad tag costs seconds instead of a full build and test run.
 
 Publishing needs four repository secrets: `CHROME_EXTENSION_ID`,
 `CHROME_CLIENT_ID`, `CHROME_CLIENT_SECRET`, `CHROME_REFRESH_TOKEN` (see

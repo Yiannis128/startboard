@@ -19,6 +19,15 @@ function buildCss(root) {
   });
 }
 
+/**
+ * What the service worker precaches: code and markup at any size, plus assets
+ * under the limit. Bulk content is cached on first use instead - the backdrop
+ * library alone is ~13MB, and precaching it would download the lot on install.
+ * Exported so the build and the test that checks it cannot drift apart.
+ */
+const SHELL_TYPES = ['.html', '.css', '.js', '.webmanifest'];
+const MAX_ASSET_BYTES = 64 * 1024;
+
 /** Posix-style path relative to `base`, so exclusion rules read the same on any OS. */
 const relative = (base, file) => path.relative(base, file).split(path.sep).join('/');
 
@@ -57,4 +66,4 @@ function readVersion(root) {
   return manifest;
 }
 
-module.exports = { buildCss, copyTree, listFiles, readVersion };
+module.exports = { buildCss, copyTree, listFiles, readVersion, SHELL_TYPES, MAX_ASSET_BYTES };
