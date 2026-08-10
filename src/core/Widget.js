@@ -80,7 +80,7 @@ export class Widget {
     this._ticker = fn ? setInterval(fn, ms) : null;
   }
 
-  /** Release listeners. Override and call `super.destroy()`; timers are done here. */
+  /** Release listeners. Runs on pagehide, and clears the ticker for you. */
   destroy() {
     this.repeat();
   }

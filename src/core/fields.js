@@ -205,7 +205,8 @@ export function bindField(section, key, field, commit) {
 /**
  * Shows or hides fields whose `visibleWhen` predicate says so. The predicate
  * takes the field getter and the widget, so a field can also depend on state
- * the widget only learns at runtime.
+ * the widget only learns at runtime. Read both: writing a setting from a
+ * predicate re-enters this through `refresh()`.
  */
 export function applyVisibility(section, schema, get, widget) {
   for (const [name, field] of Object.entries(schema)) {

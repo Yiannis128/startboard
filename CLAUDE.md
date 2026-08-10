@@ -45,17 +45,16 @@ any one alone passes. A process per file is also the isolation the tests assume:
 module-level state in `src/` starts fresh and one file's stubs cannot leak into
 the next. Do not "simplify" this back to a bare `bun test`.
 
-That accumulation has a cliff, and it is closer than it looks: a file of ~16
-`boot()` calls runs in about three seconds, and the seventeenth took the same
-file to forty. Split by subject rather than growing one file — the per-file
-process is what resets it.
+A `boot()` costs about 85ms and leaks its jsdom window for the life of the
+process, so files are split when they stop being about one subject rather than
+at any particular count.
 
 - `test/harness.mjs` — boots the real app in jsdom with browser globals
   installed, plus `fakeChrome()`, a `chrome.*` stub that enforces the real 8KB
   sync per-item quota so the two storage tiers can be told apart
 - `test/pwa.test.mjs`, `test/extension.test.mjs` — the same app under each
   runtime
-- `test/status.test.mjs` — the status widget, enough boots to want its own file
+- `test/status.test.mjs` — the status widget, permission gate included
 - `test/migrations.test.mjs`, `test/sw.test.mjs`
 
 There is no browser in CI, so nothing here covers layout, animation, drag and
@@ -103,7 +102,7 @@ export class TimeWidget extends Widget {
   mount() {}     // once: build this.root, wire this.section extras
   render() {}    // after mount, and after every settings change
   onChange() {}  // side effects that need to know which field changed
-  destroy() {}   // release listeners; call super.destroy() if you override it
+  destroy() {}   // release listeners; the ticker is cleared for you
 }
 ```
 

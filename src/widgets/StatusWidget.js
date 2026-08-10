@@ -35,8 +35,7 @@ const STATES = {
   down: { dot: 'bg-base-content opacity-40', text: 'Not responding' },
 };
 
-// Built on first use, so a default setup - which paints no tiles - never builds
-// one. Locale default, so it can disagree with the time widget's 24-hour setting.
+// The locale default, so this can disagree with the time widget's 24-hour setting.
 let clock = null;
 const at = (time) =>
   (clock ??= new Intl.DateTimeFormat(undefined, { timeStyle: 'short' })).format(time);
@@ -51,8 +50,7 @@ const WEB_LIMITS = `
     </p>
   </div>`;
 
-/** The editor is usable once the permission is held and the panel is on. */
-const editable = (get, widget) => !widget.gated && get('show');
+const liveUrls = (items) => new Set(items.map((item) => item.url));
 
 /**
  * Whether an endpoint answers, and with what if it will say. The deadline spans
@@ -110,7 +108,7 @@ export class StatusWidget extends Widget {
         { value: 'bottom', label: 'Bottom' },
         { value: 'left', label: 'Left' },
       ],
-      visibleWhen: editable,
+      visibleWhen: (get, widget) => widget.editable,
     },
     items: { type: 'value', default: [] },
   };
@@ -126,6 +124,11 @@ export class StatusWidget extends Widget {
     this.gated = false;
   }
 
+  /** Editing needs the permission held and the panel on screen. */
+  get editable() {
+    return !this.gated && this.get('show');
+  }
+
   /** Stored endpoints, filtered down to ones that are safe to fetch and link. */
   items() {
     const stored = this.get('items');
@@ -134,7 +137,7 @@ export class StatusWidget extends Widget {
       .map((item) => ({
         name: String(item?.name ?? ''),
         url: safeUrl(item?.url),
-        interval: interval(item?.interval),
+        interval: minutes(item?.interval),
       }))
       .filter((item) => item.name && item.url);
   }
@@ -199,8 +202,6 @@ export class StatusWidget extends Widget {
         </ul>
       </div>`;
 
-    // The dialog and the menu sit outside the panel, so hiding the panel leaves
-    // the sidebar's own controls working.
     this.panel = this.root.querySelector('[data-panel]');
     this.dialog = this.root.querySelector('[data-dialog]');
     this.dialogTitle = this.root.querySelector('[data-dialog-title]');
@@ -238,9 +239,7 @@ export class StatusWidget extends Widget {
     this.rows.addEventListener('pointermove', (event) => this.onDrag(event));
     this.rows.addEventListener('pointerup', () => this.endDrag(true));
     this.rows.addEventListener('pointercancel', () => this.endDrag(false));
-    // Only a non-passive listener can keep a held row from scrolling the sidebar
-    // instead of sorting it. touch-action cannot: the rows have to stay
-    // scrollable until the hold decides otherwise.
+    // Non-passive: only preventDefault here stops a held row scrolling the sidebar.
     this.rows.addEventListener('touchmove', (event) => {
       if (this.drag?.phase === 'sorting') event.preventDefault();
     }, { passive: false });
@@ -258,14 +257,21 @@ export class StatusWidget extends Widget {
   }
 
   render() {
-    this.repeat();
-
     const items = this.items();
-    const editing = editable((name) => this.get(name), this);
+    this.renderSection(items);
+    this.renderPanel(items);
+  }
+
+  renderSection(items) {
+    const editing = this.editable;
     this.endpoints.classList.toggle('hidden', !editing);
     this.grantBlock.classList.toggle('hidden', !this.gated);
-    // Skipped while the block is hidden; flipping either gate renders again.
+    // Rows would go into a hidden block; flipping either gate renders again.
     if (editing) this.renderRows(items);
+  }
+
+  renderPanel(items) {
+    this.repeat();
 
     const layout = LAYOUTS[this.get('placement')] ?? LAYOUTS.right;
     const show = this.get('show');
@@ -279,14 +285,14 @@ export class StatusWidget extends Widget {
     if (items.length === 0) return;
     // Un-awaited: a probe is a network round trip, and app.js reveals the page
     // only once every widget has mounted.
-    this.sweep(items);
+    this.sweep();
     this.repeat(() => this.sweep(), TICK_MS);
   }
 
   /** Probes the endpoints whose refresh rate has come round. */
-  async sweep(items) {
+  async sweep() {
     if (document.hidden) return;
-    items ??= this.items();
+    const items = this.items();
     this.restoring ??= this.restore(items);
     await this.restoring;
 
@@ -296,52 +302,59 @@ export class StatusWidget extends Widget {
       if (entry?.state === 'checking') return false;
       return !entry || now - entry.checkedAt >= item.interval * 60_000;
     });
-    if (due.length === 0) return;
-
-    await Promise.all(due.map((item) => this.check(item)));
-    await this.remember(items);
+    for (const item of due) this.check(item, items);
   }
 
   /** Loads the cached results for the endpoints that are still configured. */
   async restore(items) {
     const cached = await this.getLocal(CACHE_KEY);
     if (typeof cached !== 'object' || cached === null) return;
-    const live = new Set(items.map((item) => item.url));
+    const live = liveUrls(items);
     for (const [url, entry] of Object.entries(cached)) {
-      // A state name an older build wrote has no dot to paint, and a probe that
-      // started while this read was in flight owns its entry.
-      if (!live.has(url) || !STATES[entry?.state] || this.states.has(url)) continue;
+      // A shape an older build wrote has no dot to paint and no time to format,
+      // and a probe that started while this read was in flight owns its entry.
+      if (!live.has(url) || !STATES[entry?.state] || !Number.isFinite(entry.checkedAt)) continue;
+      if (this.states.has(url)) continue;
       this.states.set(url, entry);
       this.paint(url);
     }
   }
 
   /**
-   * One write per sweep rather than per probe, holding only endpoints that still
-   * exist - otherwise the cache grows by every url the user has ever configured.
+   * Coalesces the writes of probes that settle together. Waiting for the whole
+   * sweep instead would lose every result whenever one endpoint hangs, since the
+   * deadline outlives the page a new tab gives it.
    */
-  async remember(items) {
-    const live = new Set(items.map((item) => item.url));
+  remember(items) {
+    clearTimeout(this.writing);
+    this.writing = setTimeout(() => this.write(items), 0);
+  }
+
+  /** Holds only endpoints that still exist, or the cache grows for ever. */
+  async write(items) {
+    const live = liveUrls(items);
     const settled = [...this.states].filter(
       ([url, entry]) => live.has(url) && entry.state !== 'checking',
     );
     await this.setLocal(CACHE_KEY, Object.fromEntries(settled));
   }
 
-  async check(item) {
+  async check(item, items) {
     this.states.set(item.url, { state: 'checking', detail: null, checkedAt: Date.now() });
     this.paint(item.url);
     const result = await probe(item.url);
     this.states.set(item.url, { ...result, checkedAt: Date.now() });
     this.paint(item.url);
+    this.remember(items);
   }
 
   paint(url) {
-    const selector = url ? `[data-endpoint="${CSS.escape(url)}"]` : '[data-endpoint]';
-    for (const tile of this.panel.querySelectorAll(selector)) this.dress(tile);
+    const selector = `[data-endpoint="${CSS.escape(url)}"]`;
+    for (const tile of this.panel.querySelectorAll(selector)) this.paintTile(tile);
   }
 
-  dress(tile) {
+  /** Takes the element, so a tile can be dressed before it reaches the panel. */
+  paintTile(tile) {
     const entry = this.states.get(tile.dataset.endpoint) ?? { state: 'checking' };
     const state = STATES[entry.state];
     const dot = tile.querySelector('[data-dot]');
@@ -369,7 +382,7 @@ export class StatusWidget extends Widget {
     name.textContent = item.name;
 
     tile.append(...(layout.dotFirst ? [dot, name] : [name, dot]));
-    this.dress(tile);
+    this.paintTile(tile);
     tile.addEventListener('contextmenu', (event) => {
       event.preventDefault();
       this.showMenu(event, index);
@@ -518,8 +531,7 @@ export class StatusWidget extends Widget {
     const item = this.editingIndex === null ? null : items[this.editingIndex];
     if (!item) return;
     this.states.delete(item.url);
-    await this.check(item);
-    await this.remember(items);
+    await this.check(item, items);
   }
 
   async commit(items) {
@@ -529,7 +541,7 @@ export class StatusWidget extends Widget {
 
   /** Drops state for endpoints that are gone, so a re-added one probes afresh. */
   forget(items) {
-    const live = new Set(items.map((item) => item.url));
+    const live = liveUrls(items);
     for (const url of this.states.keys()) {
       if (!live.has(url)) this.states.delete(url);
     }
@@ -549,8 +561,8 @@ export class StatusWidget extends Widget {
   }
 }
 
-/** Minutes, as stored - an imported file can hold anything. */
-function interval(value) {
+/** The refresh rate in minutes, as stored - an imported file can hold anything. */
+function minutes(value) {
   const minutes = Number(value);
   if (!Number.isFinite(minutes) || minutes < 1) return DEFAULT_INTERVAL;
   return Math.min(Math.round(minutes), MAX_INTERVAL);

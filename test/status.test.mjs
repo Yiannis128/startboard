@@ -1,9 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  boot, set, settled, settings, localSetting, countIntervals, field, section, view, isHidden,
-  SCHEMA_VERSION,
+  boot, set, settled, settings, localSetting, countIntervals, fakeChrome, field, section, view,
+  isHidden, MANIFEST, SCHEMA_VERSION,
 } from './harness.mjs';
+
+/** An endpoint seed; the url follows the name unless one is given. */
+const endpoint = (name, url = `https://${name.toLowerCase()}.example`, interval = 10) =>
+  ({ name, url, interval });
+
+const seed = (...items) => ({ __version: SCHEMA_VERSION, 'status.items': items });
 
 /** The dot classes of the status tile carrying `name`. */
 const dot = (window, name) =>
@@ -73,13 +79,7 @@ test('a status endpoint is added from the sidebar, probed, and removed again', a
 test('a cached result stands in, so a new tab does not re-probe everything', async () => {
   const calls = [];
   const window = await boot({
-    settings: {
-      __version: SCHEMA_VERSION,
-      'status.items': [
-        { name: 'Fresh', url: 'https://fresh.example', interval: 10 },
-        { name: 'Stale', url: 'https://stale.example', interval: 10 },
-      ],
-    },
+    settings: seed(endpoint('Fresh'), endpoint('Stale')),
     local: {
       'status.states': {
         'https://fresh.example/': { state: 'up', detail: 'HTTP 200', checkedAt: Date.now() },
@@ -100,10 +100,7 @@ test('a cached result stands in, so a new tab does not re-probe everything', asy
 
 test('the cache holds only endpoints that still exist', async () => {
   const window = await boot({
-    settings: {
-      __version: SCHEMA_VERSION,
-      'status.items': [{ name: 'Live', url: 'https://live.example', interval: 10 }],
-    },
+    settings: seed(endpoint('Live')),
     local: {
       'status.states': {
         'https://gone.example/': { state: 'up', detail: 'HTTP 200', checkedAt: 0 },
@@ -124,10 +121,7 @@ test('the cache holds only endpoints that still exist', async () => {
 
 test('placement moves the panel, and the dot to the anchored edge', async () => {
   const window = await boot({
-    settings: {
-      __version: SCHEMA_VERSION,
-      'status.items': [{ name: 'Cloud', url: 'https://cloud.example', interval: 10 }],
-    },
+    settings: seed(endpoint('Cloud')),
   });
   const panel = view(window, 'status').querySelector('[data-panel]');
   const dotLeads = () =>
@@ -151,13 +145,7 @@ test('placement moves the panel, and the dot to the anchored edge', async () => 
 
 test('sidebar rows reorder by dragging', async () => {
   const window = await boot({
-    settings: {
-      __version: SCHEMA_VERSION,
-      'status.items': [
-        { name: 'One', url: 'https://one.example', interval: 10 },
-        { name: 'Two', url: 'https://two.example', interval: 10 },
-      ],
-    },
+    settings: seed(endpoint('One'), endpoint('Two')),
   });
   const sidebar = section(window, 'status');
   const order = () =>
@@ -184,15 +172,12 @@ test('sidebar rows reorder by dragging', async () => {
 
 test('status states cover error, opaque reply, and no reply', async () => {
   const window = await boot({
-    settings: {
-      __version: SCHEMA_VERSION,
-      'status.items': [
-        { name: 'Broken', url: 'https://broken.example', interval: 10 },
-        { name: 'Opaque', url: 'https://opaque.example', interval: 10 },
-        { name: 'Dead', url: 'https://dead.example', interval: 10 },
-        { name: 'Evil', url: 'javascript:alert(1)', interval: 10 },
-      ],
-    },
+    settings: seed(
+      endpoint('Broken'),
+      endpoint('Opaque'),
+      endpoint('Dead'),
+      endpoint('Evil', 'javascript:alert(1)'),
+    ),
     fetch: async (url, options) => {
       if (url.startsWith('javascript:')) throw new Error('should never be fetched');
       if (url.startsWith('https://broken.example')) return { status: 503 };
@@ -209,21 +194,16 @@ test('status states cover error, opaque reply, and no reply', async () => {
   const tiles = [...view(window, 'status').querySelectorAll('[data-endpoint]')];
   assert.equal(tiles.length, 3, 'a javascript: endpoint must not render');
 
-  const dot = (name) =>
-    tiles.find((tile) => tile.textContent.includes(name)).querySelector('[data-dot]').className;
-  assert.match(dot('Broken'), /bg-error/);
-  assert.match(dot('Opaque'), /bg-success/);
-  assert.match(dot('Dead'), /bg-base-content/);
+  assert.match(dot(window, 'Broken'), /bg-error/);
+  assert.match(dot(window, 'Opaque'), /bg-success/);
+  assert.match(dot(window, 'Dead'), /bg-base-content/);
 });
 
 test('status stops ticking while it is hidden', async () => {
   const intervals = countIntervals();
   try {
     const window = await boot({
-      settings: {
-        __version: SCHEMA_VERSION,
-        'status.items': [{ name: 'Cloud', url: 'https://cloud.example', interval: 10 }],
-      },
+      settings: seed(endpoint('Cloud')),
     });
     assert.equal(intervals.size, 1, 'one ticker covers the whole list');
 
@@ -232,4 +212,47 @@ test('status stops ticking while it is hidden', async () => {
   } finally {
     intervals.restore();
   }
+});
+
+/** The section is either open for business or replaced by the grant prompt. */
+function assertGate(window, locked) {
+  const sidebar = section(window, 'status');
+  assert.equal(isHidden(field(window, 'status', 'show')), locked, 'the show toggle');
+  assert.equal(isHidden(sidebar.querySelector('[data-endpoints]')), locked, 'the editor');
+  assert.equal(isHidden(sidebar.querySelector('[data-grant]')), !locked, 'the grant prompt');
+}
+
+// Adding endpoints is gated on the permission rather than guarded after the fact.
+test('the whole status section is gated until host access is granted', async () => {
+  const env = fakeChrome();
+  const window = await boot({ chrome: env.api });
+  assertGate(window, true);
+
+  section(window, 'status').querySelector('[data-grant-access]').click();
+  await settled();
+
+  // A pattern the manifest does not declare is rejected outright.
+  assert.deepEqual(env.requested, MANIFEST.optional_host_permissions);
+  assertGate(window, false);
+});
+
+test('a declined grant leaves the section locked', async () => {
+  const env = fakeChrome({ grant: false });
+  const window = await boot({ chrome: env.api });
+
+  section(window, 'status').querySelector('[data-grant-access]').click();
+  await settled();
+
+  assert.deepEqual(env.requested, MANIFEST.optional_host_permissions);
+  assertGate(window, true);
+});
+
+test('an already-granted extension opens the section without prompting', async () => {
+  const env = fakeChrome({ hosts: MANIFEST.optional_host_permissions });
+  const window = await boot({ chrome: env.api });
+
+  assertGate(window, false);
+  assert.deepEqual(env.requested, []);
+  assert.equal(section(window, 'status').querySelector('[data-web-limits]'), null,
+    'the web-only CORS warning has no place here');
 });

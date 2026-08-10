@@ -1,17 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  boot, fire, set, settled, fakeChrome, field, option, section, view, isHidden,
-  MANIFEST, SCHEMA_VERSION,
+  boot, fire, set, settled, fakeChrome, field, option, view, isHidden, SCHEMA_VERSION,
 } from './harness.mjs';
-
-/** The section is either open for business or replaced by the grant prompt. */
-function assertGate(window, locked) {
-  const sidebar = section(window, 'status');
-  assert.equal(isHidden(field(window, 'status', 'show')), locked, 'the show toggle');
-  assert.equal(isHidden(sidebar.querySelector('[data-endpoints]')), locked, 'the editor');
-  assert.equal(isHidden(sidebar.querySelector('[data-grant]')), !locked, 'the grant prompt');
-}
 
 test('uses Chrome runtime APIs and the synced storage tier', async () => {
   const env = fakeChrome();
@@ -105,44 +96,6 @@ test('uploads are read lazily, only when selected', async () => {
     1,
     'the selected upload should be read exactly once',
   );
-});
-
-// Only with the host permission can a probe read a reply from a service that
-// sends no CORS headers, or get past Cross-Origin-Resource-Policy at all - so
-// adding endpoints is gated on holding it rather than guarded after the fact.
-test('the whole status section is gated until host access is granted', async () => {
-  const env = fakeChrome();
-  const window = await boot({ chrome: env.api });
-  assertGate(window, true);
-
-  section(window, 'status').querySelector('[data-grant-access]').click();
-  await settled();
-
-  // Asked for exactly what the manifest declares: a pattern it does not carry is
-  // rejected outright, which would lock the section for good.
-  assert.deepEqual(env.requested, MANIFEST.optional_host_permissions);
-  assertGate(window, false);
-});
-
-test('a declined grant leaves the section locked', async () => {
-  const env = fakeChrome({ grant: false });
-  const window = await boot({ chrome: env.api });
-
-  section(window, 'status').querySelector('[data-grant-access]').click();
-  await settled();
-
-  assert.deepEqual(env.requested, MANIFEST.optional_host_permissions);
-  assertGate(window, true);
-});
-
-test('an already-granted extension opens the section without prompting', async () => {
-  const env = fakeChrome({ hosts: MANIFEST.optional_host_permissions });
-  const window = await boot({ chrome: env.api });
-
-  assertGate(window, false);
-  assert.deepEqual(env.requested, []);
-  assert.equal(section(window, 'status').querySelector('[data-web-limits]'), null,
-    'the web-only CORS warning has no place here');
 });
 
 test('exceeding the sync quota surfaces a toast instead of failing silently', async () => {

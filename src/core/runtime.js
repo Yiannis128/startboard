@@ -1,5 +1,7 @@
 // Read from the manifest rather than repeated here: a pattern chrome.permissions
-// is asked for but the manifest does not declare is rejected outright.
+// is asked for but the manifest does not declare is rejected outright. All of
+// them, so a second optional pattern would widen what needsHostAccess() asks
+// for - declare one only if every caller should have to hold it.
 const optionalHosts = () => chrome.runtime.getManifest().optional_host_permissions ?? [];
 
 /** Chrome extension APIs, with PWA fallbacks. */
