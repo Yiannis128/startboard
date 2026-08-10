@@ -3,6 +3,7 @@ import { WelcomeTextWidget } from './WelcomeTextWidget.js';
 import { TimeWidget } from './TimeWidget.js';
 import { SearchWidget } from './SearchWidget.js';
 import { ShortcutsWidget } from './ShortcutsWidget.js';
+import { StatusWidget } from './StatusWidget.js';
 import { BackdropWidget } from './BackdropWidget.js';
 
 /**
@@ -18,5 +19,6 @@ export const WIDGETS = [
   TimeWidget,
   SearchWidget,
   ShortcutsWidget,
+  StatusWidget,
   BackdropWidget,
 ];

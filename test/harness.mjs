@@ -21,7 +21,7 @@ let bootCount = 0;
  * their module state for the life of the process - which is why
  * scripts/test.js gives each test file its own process.
  */
-export async function boot({ chrome, settings } = {}) {
+export async function boot({ chrome, settings, local, fetch } = {}) {
   const html = fs.readFileSync(path.join(SRC, 'index.html'), 'utf-8');
   const dom = new JSDOM(html, { url: 'https://example.test/', pretendToBeVisual: true });
   const { window } = dom;
@@ -42,18 +42,25 @@ export async function boot({ chrome, settings } = {}) {
     globalThis[key] = window[key];
   }
   globalThis.navigator = window.navigator;
-  globalThis.fetch = async () => {
-    throw new Error('offline');
-  };
+  // Installed before app.js runs, because widgets can fetch as they mount.
+  globalThis.fetch =
+    fetch ??
+    (async () => {
+      throw new Error('offline');
+    });
 
   if (chrome) globalThis.chrome = chrome;
   else delete globalThis.chrome;
 
   // Seeded through the storage layer rather than by writing its keys directly,
-  // so tests do not pin how settings are serialised.
-  if (settings) {
+  // so tests do not pin how either tier is serialised.
+  if (settings || local) {
     const { createStorage } = await import(`${SRC}/core/storage.js`);
-    await createStorage().replaceAll(settings);
+    const storage = createStorage();
+    if (settings) await storage.replaceAll(settings);
+    for (const [key, value] of Object.entries(local ?? {})) {
+      await storage.saveLocal(key, value);
+    }
   }
 
   await import(`${SRC}/app.js?boot=${++bootCount}`);
@@ -71,6 +78,9 @@ export async function settings() {
   const { createStorage } = await import(`${SRC}/core/storage.js`);
   return createStorage().load();
 }
+
+export const section = (window, widget) =>
+  window.document.querySelector(`[data-widget="${widget}"]`);
 
 export const field = (window, widget, name) =>
   window.document.querySelector(`[data-widget="${widget}"] [data-field="${name}"]`);
@@ -93,12 +103,48 @@ export async function set(element, value, event = 'change') {
 }
 
 /**
+ * Counts the intervals that are currently live, so a test can assert a widget
+ * starts one and clears it again. Install before boot() to see the ones a
+ * widget starts as it mounts, and restore() in a finally.
+ */
+export function countIntervals() {
+  const live = new Set();
+  const [realSet, realClear] = [globalThis.setInterval, globalThis.clearInterval];
+  globalThis.setInterval = (...args) => {
+    const id = realSet(...args);
+    live.add(id);
+    return id;
+  };
+  globalThis.clearInterval = (id) => {
+    live.delete(id);
+    return realClear(id);
+  };
+  return {
+    get size() {
+      return live.size;
+    },
+    restore() {
+      globalThis.setInterval = realSet;
+      globalThis.clearInterval = realClear;
+    },
+  };
+}
+
+/**
  * A chrome.* stub that enforces the real sync per-item quota, so tests can
  * tell the difference between the synced and local storage tiers.
  */
-export function fakeChrome({ sync = {}, local = {}, syncQuotaBytes = 8192 } = {}) {
+export function fakeChrome({
+  sync = {},
+  local = {},
+  syncQuotaBytes = 8192,
+  hosts = [],
+  grant = true,
+} = {}) {
   const searches = [];
   const reads = [];
+  const requested = [];
+  const held = new Set(hosts);
 
   const area = (store, quota, track) => ({
     async get(keys) {
@@ -137,11 +183,23 @@ export function fakeChrome({ sync = {}, local = {}, syncQuotaBytes = 8192 } = {}
           callback();
         },
       },
+      permissions: {
+        async contains({ origins }) {
+          return origins.every((origin) => held.has(origin));
+        },
+        async request({ origins }) {
+          requested.push(...origins);
+          if (grant) for (const origin of origins) held.add(origin);
+          return grant;
+        },
+      },
     },
     sync,
     local,
     searches,
     /** Keys read from the local tier, to assert lazy loading. */
     reads,
+    /** Match patterns passed to chrome.permissions.request. */
+    requested,
   };
 }

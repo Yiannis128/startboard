@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  boot, fire, set, settled, fakeChrome, field, option, view, isHidden, SCHEMA_VERSION,
+  boot, fire, set, settled, fakeChrome, field, option, section, view, isHidden, SCHEMA_VERSION,
 } from './harness.mjs';
 
 test('uses Chrome runtime APIs and the synced storage tier', async () => {
@@ -96,6 +96,56 @@ test('uploads are read lazily, only when selected', async () => {
     1,
     'the selected upload should be read exactly once',
   );
+});
+
+// Only with the host permission can a probe read a reply from a service that
+// sends no CORS headers, or get past Cross-Origin-Resource-Policy at all - so
+// adding endpoints is gated on holding it rather than guarded after the fact.
+test('the whole status section is gated until host access is granted', async () => {
+  const env = fakeChrome();
+  const window = await boot({ chrome: env.api });
+  const sidebar = section(window, 'status');
+  const endpoints = sidebar.querySelector('[data-endpoints]');
+  const grant = sidebar.querySelector('[data-grant]');
+
+  assert.ok(isHidden(field(window, 'status', 'show')), 'even the toggle is locked away');
+  assert.ok(endpoints.classList.contains('hidden'), 'and the endpoint editor with it');
+  assert.ok(!grant.classList.contains('hidden'), 'the explanation takes their place');
+
+  sidebar.querySelector('[data-grant-access]').click();
+  await settled();
+
+  assert.deepEqual(env.requested, ['*://*/*']);
+  assert.ok(!isHidden(field(window, 'status', 'show')), 'granting unlocks the section');
+  assert.ok(!endpoints.classList.contains('hidden'));
+  assert.ok(grant.classList.contains('hidden'));
+});
+
+test('a declined grant leaves the section locked', async () => {
+  const env = fakeChrome({ grant: false });
+  const window = await boot({ chrome: env.api });
+  const sidebar = section(window, 'status');
+
+  sidebar.querySelector('[data-grant-access]').click();
+  await settled();
+
+  assert.deepEqual(env.requested, ['*://*/*']);
+  assert.ok(isHidden(field(window, 'status', 'show')));
+  assert.ok(sidebar.querySelector('[data-endpoints]').classList.contains('hidden'));
+  assert.ok(!sidebar.querySelector('[data-grant]').classList.contains('hidden'));
+});
+
+test('an already-granted extension opens the section without prompting', async () => {
+  const env = fakeChrome({ hosts: ['*://*/*'] });
+  const window = await boot({ chrome: env.api });
+  const sidebar = section(window, 'status');
+
+  assert.ok(!isHidden(field(window, 'status', 'show')));
+  assert.ok(!sidebar.querySelector('[data-endpoints]').classList.contains('hidden'));
+  assert.ok(sidebar.querySelector('[data-grant]').classList.contains('hidden'));
+  assert.deepEqual(env.requested, []);
+  assert.equal(sidebar.querySelector('[data-web-limits]'), null,
+    'the web-only CORS warning has no place here');
 });
 
 test('exceeding the sync quota surfaces a toast instead of failing silently', async () => {

@@ -183,6 +183,88 @@ bang targets come from a third-party feed. All three are places a
 optional. Shortcuts are re-validated on render, not just on save, because an
 imported file bypasses the save path.
 
+### Service checks
+
+`StatusWidget` pings each configured endpoint on its own refresh rate and shows
+a dot per service: green responding, yellow mid-check, red answered with an
+error, grey nothing answered.
+
+Each probe is two attempts. `mode: 'cors'` first, because the status code is the
+only thing that separates an error reply from a healthy one; if that fails,
+`mode: 'no-cors'`, whose opaque response resolves for any HTTP status and
+rejects only when nothing answered at all. A self-hosted service rarely sends
+CORS headers, so most endpoints land on the second attempt and go green with no
+status to show.
+
+The opaque fallback is not enough on its own. A service that sends
+`Cross-Origin-Resource-Policy: same-origin` — Vaultwarden does, and it is
+ordinary hardening — has the browser refuse the no-cors read as well, so both
+attempts fail and a perfectly healthy service reads as grey. Nothing a page can
+do gets past that: an `<img>` or `link` probe is a no-cors subresource and is
+blocked the same way.
+
+The way out is a Chrome host permission, which exempts the fetch from CORS so
+the first attempt succeeds and CORP never applies (it is only ever checked on
+no-cors requests). `manifest.json` declares `optional_host_permissions:
+["*://*/*"]` — optional, so it carries no install-time warning — and
+`Runtime.hasHostAccess()` / `requestHostAccess()` read and ask for it. An
+endpoint can be any host and Chrome grants host access by pattern, so there is
+nothing narrower to ask for.
+
+The whole settings section is **gated** on holding it: until then the section is
+a "Grant Permission" button and an explanation, with the show toggle, the
+placement picker and the endpoint editor all hidden. Gating the one entry point
+is why nothing downstream needs an ungranted case — `probe()`, the tiles and the
+cache can all assume a reply is readable.
+
+`granted` lives at module scope rather than on the instance because the schema
+is static and its `visibleWhen` has to read it; that is what lets the framework
+hide the two fields, leaving the widget its own two blocks. It starts
+optimistic so the PWA, where `hasHostAccess()` is true because there is nothing
+to hold, never flashes a prompt it could not honour, and the check runs
+un-awaited from `mount()` — it decides what the settings section offers, and the
+sidebar starts closed.
+
+None of this reaches the PWA, where a page cannot be granted anything and the
+two-attempt probe is all there is: a CORP-protected endpoint reads as grey
+there, as does an `http://` one (mixed content on an HTTPS-hosted page). The
+extension is the way to watch either, and the settings section says so — a
+warning block that `settingsExtra()` renders only when `Runtime.isExtension()`
+is false, since a grey dot on its own looks like a broken service.
+
+Nothing in the page can tell a blocked read from a dead host: both reject as
+`TypeError: Failed to fetch`, cross-origin Resource Timing entries are zeroed
+without `Timing-Allow-Origin`, an `<img>` probe is a no-cors subresource and is
+blocked the same way, and a WebSocket reports 1006 either way. Closing that
+inference is what CORP is for, so do not go looking for a signal to key off.
+
+Results are cached in the local tier and read back on the first sweep. Without
+that the refresh rate would gate nothing: a new-tab page lives for seconds, so
+every endpoint would be re-probed on every tab the user opens. The cache is what
+makes "check every 10 minutes" true, and it also means the dots come up at their
+last known colour instead of flashing yellow on every tab. It is read from the
+sweep rather than from `mount()`, so a setup with no endpoints reads nothing.
+
+One `setInterval` covers the whole list rather than one timer per endpoint: it
+ticks every 15s and probes whatever is due. It does nothing while the tab is
+hidden, and a return to the tab is picked up by the next tick.
+
+The endpoints are edited from the sidebar — an "Add Endpoint" button and one row
+each, where a row's name opens the editor and ✕ removes it. The page tiles are
+read-only status apart from their right-click menu, which is the only place
+"Check now" lives. `placement` picks which edge the panel is pinned to; left and
+right stack, top and bottom spread, and the dot faces the anchored edge. The
+placement classes go on an inner `[data-panel]`, so hiding the widget leaves the
+framework's `this.root` alone — and leaves the dialog, which sits outside the
+panel, reachable from the sidebar while the panel is off.
+
+Sidebar rows reorder by drag, on one pointer-event path for mouse and touch
+alike, with `setPointerCapture` keeping a drag alive once it leaves the row.
+Touch waits for a hold first, so a swipe over the list still scrolls, and the
+held row then stops that scroll from a non-passive `touchmove` listener —
+`touch-action` cannot do it, since the rows have to stay scrollable until the
+hold decides otherwise.
+
 ### Builds
 
 Both build scripts copy `src/` recursively and exclude by name, so neither has
