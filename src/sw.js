@@ -1,113 +1,74 @@
 /**
- * StartBoard Service Worker
- * Provides offline caching for PWA functionality
+ * Offline caching for the PWA. Both placeholders are filled by
+ * scripts/build-pwa.js, which walks the built output rather than keeping a
+ * hand-maintained file list here.
  */
 
-// Version is injected by build script, fallback for development
-const CACHE_VERSION = '{{VERSION}}';
-const CACHE_NAME = `startboard-${CACHE_VERSION === '{{VERSION}}' ? 'dev' : 'v' + CACHE_VERSION}`;
-const ASSETS_TO_CACHE = [
-  './',
-  './index.html',
-  './output.css',
-  './config.js',
-  './app.js',
-  './version.js',
-  './storage/StorageAdapter.js',
-  './runtime/RuntimeAdapter.js',
-  './widgets/StartWidget.js',
-  './widgets/WelcomeTextWidget.js',
-  './widgets/TimeWidget.js',
-  './widgets/SearchWidget.js',
-  './widgets/ShortcutsWidget.js',
-  './widgets/ThemeWidget.js',
-  './widgets/BackdropWidget.js',
-  './img/icon.png',
-  './img/icon-192.png',
-  './img/icon-512.png',
-  './manifest.webmanifest'
-];
+const CACHE_NAME = 'startboard-v{{VERSION}}';
 
-// Install event - cache all assets
+// The app shell only - see isShell() in the build script. Bulk assets such as
+// the ~13MB backdrop library are cached on first use instead of up front.
+const PRECACHE = {{ASSETS}};
+
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => {
-        return cache.addAll(ASSETS_TO_CACHE);
-      })
-      .then(() => {
-        return self.skipWaiting();
-      })
+    caches
+      .open(CACHE_NAME)
+      .then((cache) => cache.addAll(PRECACHE))
+      .then(() => self.skipWaiting()),
   );
 });
 
-// Activate event - clean up old caches
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys()
-      .then((cacheNames) => {
-        return Promise.all(
-          cacheNames
-            .filter((name) => name !== CACHE_NAME)
-            .map((name) => caches.delete(name))
-        );
-      })
-      .then(() => {
-        return self.clients.claim();
-      })
+    caches
+      .keys()
+      .then((names) =>
+        Promise.all(names.filter((name) => name !== CACHE_NAME).map((name) => caches.delete(name))),
+      )
+      .then(() => self.clients.claim()),
   );
 });
 
-// Fetch event - serve from cache, fall back to network
 self.addEventListener('fetch', (event) => {
-  // Only handle GET requests
-  if (event.request.method !== 'GET') {
-    return;
+  if (event.request.method !== 'GET') return;
+
+  // Third-party requests are left alone: caching the Helium bangs feed here
+  // would shadow the widget's own one-week cache and make Refresh Bangs a
+  // no-op.
+  if (new URL(event.request.url).origin !== self.location.origin) return;
+
+  event.respondWith(staleWhileRevalidate(event));
+});
+
+async function staleWhileRevalidate(event) {
+  const cached = await caches.match(event.request);
+
+  if (cached) {
+    event.waitUntil(refresh(event));
+    return cached;
   }
 
-  event.respondWith(
-    caches.match(event.request)
-      .then((cachedResponse) => {
-        if (cachedResponse) {
-          // Return cached response but also update cache in background
-          event.waitUntil(
-            fetch(event.request)
-              .then((networkResponse) => {
-                if (networkResponse.ok) {
-                  caches.open(CACHE_NAME)
-                    .then((cache) => {
-                      cache.put(event.request, networkResponse);
-                    });
-                }
-              })
-              .catch(() => {
-                // Network failed, but we have cache - that's fine
-              })
-          );
-          return cachedResponse;
-        }
+  try {
+    return await refresh(event);
+  } catch {
+    if (event.request.mode === 'navigate') {
+      const shell = await caches.match('./index.html');
+      if (shell) return shell;
+    }
+    return new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
+  }
+}
 
-        // Not in cache, try network
-        return fetch(event.request)
-          .then((networkResponse) => {
-            // Cache successful responses
-            if (networkResponse.ok) {
-              const responseClone = networkResponse.clone();
-              caches.open(CACHE_NAME)
-                .then((cache) => {
-                  cache.put(event.request, responseClone);
-                });
-            }
-            return networkResponse;
-          })
-          .catch(() => {
-            // Network failed and not in cache
-            // For navigation requests, return the cached index.html
-            if (event.request.mode === 'navigate') {
-              return caches.match('./index.html');
-            }
-            return new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
-          });
-      })
-  );
-});
+async function refresh(event) {
+  const response = await fetch(event.request);
+  if (response.ok) {
+    // Handed back before the write lands: the assets that miss the cache are
+    // the ones too big to precache, and awaiting a multi-megabyte cache.put
+    // would hold up first paint.
+    event.waitUntil(
+      caches.open(CACHE_NAME).then((cache) => cache.put(event.request, response.clone())),
+    );
+  }
+  return response;
+}

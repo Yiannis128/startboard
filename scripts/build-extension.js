@@ -1,102 +1,40 @@
 #!/usr/bin/env node
 
 /**
- * Build script for Chrome Extension
- * Creates dist/extension/ directory and dist/startboard-extension.zip
+ * Builds dist/extension/ and dist/startboard-extension.zip from src/.
+ *
+ * Everything in src/ ships except the PWA-only files and build inputs, so
+ * adding a widget needs no change here.
  */
 
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
+const { copyTree, readVersion } = require('./lib');
 
 const ROOT = path.join(__dirname, '..');
-const DIST = path.join(ROOT, 'dist');
-const EXT_DIST = path.join(DIST, 'extension');
+const OUT = path.join(ROOT, 'dist', 'extension');
+const ZIP = path.join(ROOT, 'dist', 'startboard-extension.zip');
 
-// Files/directories to include in extension build
-const INCLUDE = [
-  'manifest.json',
-  'src',
-  'LICENSE'
-];
-
-// Files to exclude (not needed for extension)
-const EXCLUDE = [
-  'src/manifest.webmanifest',
-  'src/sw.js',
-  'src/version.js'
-];
-
-function ensureDir(dir) {
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-}
-
-function copyRecursive(src, dest, excludes = []) {
-  const stat = fs.statSync(src);
-
-  // Check if this path should be excluded
-  const relativePath = path.relative(ROOT, src);
-  if (excludes.some(ex => relativePath === ex || relativePath.startsWith(ex + path.sep))) {
-    return;
-  }
-
-  if (stat.isDirectory()) {
-    ensureDir(dest);
-    const entries = fs.readdirSync(src);
-    for (const entry of entries) {
-      copyRecursive(
-        path.join(src, entry),
-        path.join(dest, entry),
-        excludes
-      );
-    }
-  } else {
-    fs.copyFileSync(src, dest);
-  }
-}
-
-function clean() {
-  if (fs.existsSync(EXT_DIST)) {
-    fs.rmSync(EXT_DIST, { recursive: true });
-  }
-}
+const EXCLUDE = new Set(['manifest.webmanifest', 'sw.js', 'input.css']);
 
 function build() {
-  console.log('Building Chrome extension...');
+  const version = readVersion(ROOT);
+  console.log(`Building Chrome extension (v${version})...`);
 
-  clean();
-  ensureDir(EXT_DIST);
+  fs.rmSync(OUT, { recursive: true, force: true });
+  copyTree(path.join(ROOT, 'src'), path.join(OUT, 'src'), EXCLUDE);
+  fs.copyFileSync(path.join(ROOT, 'manifest.json'), path.join(OUT, 'manifest.json'));
+  fs.copyFileSync(path.join(ROOT, 'LICENSE'), path.join(OUT, 'LICENSE'));
 
-  // Copy files
-  for (const item of INCLUDE) {
-    const src = path.join(ROOT, item);
-    const dest = path.join(EXT_DIST, item);
-
-    if (fs.existsSync(src)) {
-      copyRecursive(src, dest, EXCLUDE);
-      console.log(`  Copied: ${item}`);
-    } else {
-      console.warn(`  Warning: ${item} not found`);
-    }
-  }
-
-  // Create zip file
-  const zipPath = path.join(DIST, 'startboard-extension.zip');
-  if (fs.existsSync(zipPath)) {
-    fs.unlinkSync(zipPath);
-  }
-
+  fs.rmSync(ZIP, { force: true });
   try {
-    execSync(`cd "${EXT_DIST}" && zip -r "${zipPath}" .`, { stdio: 'inherit' });
-    console.log(`\nCreated: dist/startboard-extension.zip`);
-  } catch (e) {
-    console.error('Failed to create zip file. Make sure zip is installed.');
+    execFileSync('zip', ['-rq', ZIP, '.'], { cwd: OUT, stdio: 'inherit' });
+    console.log('  Output: dist/extension/ and dist/startboard-extension.zip');
+  } catch {
+    console.error('  Could not create the zip - is `zip` installed? Directory output is still usable.');
+    process.exitCode = 1;
   }
-
-  console.log('\nExtension build complete!');
-  console.log(`  Directory: dist/extension/`);
 }
 
 build();
