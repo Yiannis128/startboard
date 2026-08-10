@@ -1,0 +1,83 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+  # Callable so the release builds and tests exactly what CI does.
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # On the job, not the workflow: a superseded build is worth cancelling, but
+    # the deploy job below must not be killed part-way through going live.
+    concurrency:
+      group: build-${{ github.ref }}
+      cancel-in-progress: true
+    permissions:
+      contents: read
+      # For the Pages upload, which only runs on a master push.
+      pages: write
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Bun
+        uses: ./.github/actions/setup
+
+      # Both targets, so a PR cannot break the extension build without failing.
+      - name: Build extension and PWA
+        run: bun run build:all
+
+      # The suite needs the built dist/pwa/sw.js, which the step above produced.
+      - name: Run tests
+        run: bun run test:only
+
+      - name: Upload extension
+        uses: actions/upload-artifact@v7
+        with:
+          name: extension
+          path: dist/startboard-extension.zip
+          if-no-files-found: error
+          retention-days: 7
+          # Already a zip of compressed images; recompressing buys nothing.
+          compression-level: 0
+
+      - name: Set up Pages
+        if: github.event_name == 'push'
+        uses: actions/configure-pages@v6
+
+      - name: Upload the PWA for Pages
+        if: github.event_name == 'push'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: ./dist/pwa
+
+  # Master only, and after the suite: Pages gets the build the tests passed,
+  # rather than a second build racing alongside them.
+  deploy:
+    if: github.event_name == 'push'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    # Superseded builds are worth cancelling; a live deployment is not.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

@@ -22,7 +22,10 @@ export function setError(element, message) {
 export function notify(message, level = 'info') {
   const toast = document.createElement('div');
   toast.className = `alert ${level === 'error' ? 'alert-error' : 'alert-info'}`;
-  toast.setAttribute('role', 'status');
+  // Carries the level independently of the styling classes, so restyling does
+  // not change what the toast means.
+  toast.dataset.toastLevel = level;
+  toast.setAttribute('role', level === 'error' ? 'alert' : 'status');
   toast.textContent = message;
   ensureContainer().appendChild(toast);
   setTimeout(() => toast.remove(), TIMEOUT_MS);

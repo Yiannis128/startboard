@@ -10,7 +10,9 @@
 
 const fs = require('fs');
 const path = require('path');
-const { copyTree, listFiles, readVersion } = require('./lib');
+const {
+  buildCss, copyTree, listFiles, readVersion, SHELL_TYPES, MAX_ASSET_BYTES,
+} = require('./lib');
 
 const ROOT = path.join(__dirname, '..');
 const SRC = path.join(ROOT, 'src');
@@ -19,12 +21,6 @@ const OUT = path.join(ROOT, 'dist', 'pwa');
 const EXCLUDE = new Set(['input.css']);
 
 const PRECACHE_SKIP = new Set(['sw.js', 'LICENSE']);
-
-// The shell is code and markup, whatever its size, plus small assets. Bulk
-// content is fetched and cached on first use instead: the backdrop library
-// alone is ~13MB, and precaching it would download the lot on install.
-const SHELL_TYPES = ['.html', '.css', '.js', '.webmanifest'];
-const MAX_ASSET_BYTES = 64 * 1024;
 
 function isShell(file) {
   if (PRECACHE_SKIP.has(file)) return false;
@@ -67,6 +63,7 @@ function patch(file, replacements) {
 function build() {
   const version = readVersion(ROOT);
   console.log(`Building PWA (v${version})...`);
+  buildCss(ROOT);
 
   fs.rmSync(OUT, { recursive: true, force: true });
   copyTree(SRC, OUT, EXCLUDE);
@@ -86,7 +83,7 @@ function build() {
 
   const bytes = shell.reduce((total, file) => total + fs.statSync(path.join(OUT, file)).size, 0);
   console.log(`  ${precache.length} files precached (${Math.round(bytes / 1024)}KB)`);
-  console.log('  Output: dist/pwa/  (test with: npx serve dist/pwa)');
+  console.log('  Output: dist/pwa/  (test with: cd dist/pwa && python3 -m http.server)');
 }
 
 build();

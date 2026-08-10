@@ -10,19 +10,49 @@ Pages).
 
 ## Build Commands
 
-- `npm run build:css` — regenerate `src/output.css` after touching Tailwind classes
-- `npm run watch` — same, on file changes
-- `npm run build:extension` → `dist/extension/` and `dist/startboard-extension.zip`
-- `npm run build:pwa` → `dist/pwa/`
-- `npm run build:all` — both
+This project uses **bun**, in CI and locally. `bun.lock` is the lockfile of
+record; there is no `package-lock.json`, and npm is not installed on the
+development machine.
 
-CI uses npm, so `package-lock.json` is the lockfile of record. This machine has
-no npm; use `bun run <script>` locally, which reads the same `package.json`
-scripts.
+- `bun install` — dependencies
+- `bun run build:extension` → `dist/extension/` and `dist/startboard-extension.zip`
+- `bun run build:pwa` → `dist/pwa/`
+- `bun run build:all` — both
+- `bun run watch` — rebuild CSS on change
+- `bun run test` — the test suite (not `bun test`; see Tests below)
 
-Test the PWA with `npx serve dist/pwa` (or `python3 -m http.server` from inside
-`dist/pwa`). It must be served over HTTP — the ES modules and service worker
-will not load from `file://`.
+The build scripts compile the CSS themselves (`buildCss` in `scripts/lib.js`)
+rather than chaining a package script, so `node scripts/build-pwa.js` works
+regardless of which runner started it.
+
+Serve the PWA over HTTP to try it — `python3 -m http.server` from inside
+`dist/pwa`. ES modules and the service worker will not load from `file://`.
+
+## Tests
+
+`bun run test` builds the PWA and runs the suite; `bun run test:only` skips the
+build when `dist/pwa` is already current. The service worker suite reads the
+*built* `dist/pwa/sw.js`, so it needs that build to exist.
+
+Tests are written against `node:test` but run under bun — on a machine where
+`node` is a bun shim, `node --test` does not work.
+
+**`scripts/test.js` runs each file in its own process, and that is not
+optional.** `bun test` evaluates every file in one process; these tests each
+build a jsdom window and re-import the app, and that state accumulates until the
+run stops exiting — `pwa + extension + migrations` together hang reliably while
+any one alone passes. A process per file is also the isolation the tests assume:
+module-level state in `src/` starts fresh and one file's stubs cannot leak into
+the next. Do not "simplify" this back to a bare `bun test`.
+
+- `test/harness.mjs` — boots the real app in jsdom with browser globals
+  installed, plus `fakeChrome()`, a `chrome.*` stub that enforces the real 8KB
+  sync per-item quota so the two storage tiers can be told apart
+- `test/pwa.test.mjs`, `test/extension.test.mjs` — the same app under each runtime
+- `test/migrations.test.mjs`, `test/sw.test.mjs`
+
+There is no browser in CI, so nothing here covers layout, animation, drag and
+drop, or the file picker. Those still need a manual pass.
 
 ## Architecture
 
@@ -187,7 +217,7 @@ full (see the `ACCENTS` map in `core/fields.js`).
 
 ## Loading the Extension
 
-1. `npm run build:extension`
+1. `bun run build:extension`
 2. `chrome://extensions/` → enable "Developer mode"
 3. "Load unpacked" → select `dist/extension/`
 
@@ -201,12 +231,47 @@ Click refresh on the extension card after code changes.
 trailing commas) and is sanitized before `JSON.parse`. Cached for a week in
 local storage.
 
-## Deployment
+## Workflows
 
-- PWA: auto-deploys to GitHub Pages on push to master via
-  `.github/workflows/deploy-pwa.yml`
-- Chrome extension: no workflow currently exists; `dist/startboard-extension.zip`
-  is uploaded to a release by hand
+- `build.yml` — pull requests, master, and callable via `workflow_call`. Builds
+  both targets, runs the suite, uploads the extension zip; on a master push it
+  also deploys `dist/pwa` to GitHub Pages.
+- `release.yml` — on release creation: checks the tag against the manifest,
+  calls `build.yml`, attaches the zip to the release, publishes to the Chrome
+  Web Store.
 
-`manifest.json` is the single source of version truth. Both builds read it, and
-`package.json` should be kept in step with it.
+One workflow does the building, so a PR, a master push and a release all run the
+same steps, and Pages only ever gets a build the suite passed. The Pages deploy
+is a separate job so its `pages` concurrency group can decline to cancel a
+deployment already going out, while the build job's own group still cancels
+superseded runs. The Pages steps are skipped unless the event is a master push,
+which is why they sit in a job holding `pages: write`.
+
+Checkout, Bun, the dependency cache, and `bun install` live in the composite
+action at `.github/actions/setup`. Checkout itself has to stay in each caller —
+a local action cannot be resolved before the repository is on disk. Bun's
+version comes from `packageManager` in `package.json` rather than `latest`, so
+CI cannot drift onto a different release than the one used locally.
+
+## Releasing
+
+`manifest.json` is the single source of version truth, and `readVersion` in
+`scripts/lib.js` is its only reader — CI asks `node scripts/version.js` rather
+than parsing the file itself. `readVersion` fails when `package.json` disagrees,
+so the two cannot drift. Bump both, commit, then create a release tagged
+`v<version>`; `release.yml` refuses to publish when the tag disagrees with the
+manifest, so a forgotten bump fails the release instead of shipping a
+mislabelled extension. That check runs beside the build rather than after it, so
+a bad tag costs seconds instead of a full build and test run.
+
+Publishing needs four repository secrets: `CHROME_EXTENSION_ID`,
+`CHROME_CLIENT_ID`, `CHROME_CLIENT_SECRET`, `CHROME_REFRESH_TOKEN` (see
+https://developer.chrome.com/docs/webstore/using-api). It lives in
+`scripts/publish-webstore.sh`, not inline in the workflow, so it gets shellcheck
+and can be run by hand after a failed release. It uses `curl` rather than a
+third-party action to keep publish credentials out of code this repo does not
+control, and inspects the response body rather than the status code — both Web
+Store endpoints answer 200 with a failure payload.
+
+The GitHub release asset is attached before the Web Store step, so a Web Store
+failure still leaves a downloadable build on the release.

@@ -84,22 +84,25 @@ StartBoard is fully client-side. Your configuration is stored locally on your de
 
 ```bash
 # Install dependencies
-npm install
+bun install
 
 # Watch mode (rebuilds CSS on changes)
-npm run watch
+bun run watch
 
 # Build Chrome extension
-npm run build:extension
+bun run build:extension
 
 # Build PWA
-npm run build:pwa
+bun run build:pwa
 
 # Build both
-npm run build:all
+bun run build:all
 
-# Test PWA locally
-npx serve dist/pwa
+# Run the test suite
+bun run test
+
+# Serve the PWA locally
+cd dist/pwa && python3 -m http.server
 ```
 
 ## License
