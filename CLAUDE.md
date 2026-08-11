@@ -220,18 +220,17 @@ local action cannot be resolved before the repository is on disk.
 
 A release deploys Pages as well as a master push, because the release build is
 the only one holding that release's notes — leaving it out would serve the
-previous ones until somebody happened to push again. Two things make that work
-and neither is visible in the workflow file. The `github-pages` environment
-restricts deployments by ref, so the tag pattern `v*` is allowed alongside
-`master`; without it the release runs at a tag the environment refuses, the
-called workflow fails, and `publish` never runs. And a called workflow gets no
-more permission than its caller grants, so `release.yml` names `pages: write`
-and `id-token: write` on the job that calls `build.yml`.
+previous ones until somebody happened to push again. What makes that work is
+not in the workflow file: the `github-pages` environment restricts deployments
+by ref, so the tag pattern `v*` is allowed there alongside `master`. Without it
+the release runs at a tag the environment refuses, the called workflow fails,
+and `publish` never runs.
 
-The cost of routing the deploy through the called workflow is that a Pages
-failure blocks the Web Store publish. That is what
-`scripts/publish-webstore.sh` being a standalone script is for — run it by hand
-against the zip attached to the release.
+Routing the deploy through the called workflow coupled the two: a Pages failure
+blocks the Web Store publish, and `publish` is also what attaches the zip, so
+the release will not have one to fall back to. Recovery is the `extension`
+artifact from the failed run, and `scripts/publish-webstore.sh` by hand against
+that.
 
 `manifest.json` is the version source of truth and `readVersion` in
 `scripts/lib.js` is its only reader — it fails when `package.json` disagrees, so
@@ -253,13 +252,9 @@ Authentication is a service account rather than a user refresh token, which is
 the other thing the Web Store API accepts. A refresh token expires after six
 months unused, and this project releases a few times a year, so the credential
 would usually be dead by the time a release needed it — and the failure arrives
-during the release, not before it. The service account is granted nothing in
-IAM; what authorizes it is its address being listed under Account in the Web
-Store dashboard. **A publisher can hold only one**, so that slot is spoken for.
-
-The script therefore signs its own JWT — base64url header and claims, RS256 via
-`openssl`, exchanged for an access token — because the key JSON is not a
-credential any endpoint takes directly.
+during the release, not before it. What authorizes the account is in the script
+header; it signs its own JWT because the key JSON is not a credential any
+endpoint takes directly.
 
 ## External dependencies
 
