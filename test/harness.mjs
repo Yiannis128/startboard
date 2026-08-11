@@ -13,6 +13,17 @@ export const MANIFEST = JSON.parse(fs.readFileSync(path.join(ROOT, 'manifest.jso
 // rather than quietly becoming a stale document that gets migrated.
 export { SCHEMA_VERSION } from '../src/core/migrations.js';
 
+/**
+ * Files the build ships beside index.html, which jsdom will not serve. The
+ * harness answers for them so a widget fetching one does not turn up in another
+ * test's fetch stub; pass `assets` to boot() to serve different content, or
+ * null for a file that is not there.
+ */
+const ASSETS = ['whats-new.md'];
+
+/** Asset paths served since the last boot(), oldest first. */
+export const served = [];
+
 let bootCount = 0;
 
 /**
@@ -24,7 +35,7 @@ let bootCount = 0;
  * their module state for the life of the process - which is why
  * scripts/test.js gives each test file its own process.
  */
-export async function boot({ chrome, settings, local, fetch } = {}) {
+export async function boot({ chrome, settings, local, fetch, assets } = {}) {
   const html = fs.readFileSync(path.join(SRC, 'index.html'), 'utf-8');
   const dom = new JSDOM(html, { url: 'https://example.test/', pretendToBeVisual: true });
   const { window } = dom;
@@ -45,12 +56,28 @@ export async function boot({ chrome, settings, local, fetch } = {}) {
     globalThis[key] = window[key];
   }
   globalThis.navigator = window.navigator;
-  // Installed before app.js runs, because widgets can fetch as they mount.
-  globalThis.fetch =
+
+  const bodies = {
+    ...Object.fromEntries(
+      ASSETS.map((name) => [name, fs.readFileSync(path.join(SRC, name), 'utf-8')]),
+    ),
+    ...assets,
+  };
+  const network =
     fetch ??
     (async () => {
       throw new Error('offline');
     });
+  served.length = 0;
+  // Installed before app.js runs, because widgets can fetch as they mount.
+  globalThis.fetch = async (url, options) => {
+    const name = String(url);
+    if (!(name in bodies)) return network(url, options);
+    served.push(name);
+    const body = bodies[name];
+    if (body === null) return { ok: false, status: 404, text: async () => '' };
+    return { ok: true, status: 200, text: async () => body };
+  };
 
   if (chrome) globalThis.chrome = chrome;
   else delete globalThis.chrome;

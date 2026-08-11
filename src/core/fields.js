@@ -1,4 +1,5 @@
 import { setError } from './notify.js';
+import { escapeHtml } from './html.js';
 
 /**
  * Renders and binds settings controls from a widget's schema.
@@ -20,10 +21,6 @@ const ACCENTS = {
 const COLUMNS = { 1: 'grid-cols-1', 2: 'grid-cols-2' };
 
 const TILE = 'w-full rounded-lg border-2 border-base-300 hover:bg-base-200 transition-colors';
-
-const ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
-
-const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (c) => ESCAPES[c]);
 
 export const label = (text) =>
   `<label class="label"><span class="label-text">${escapeHtml(text)}</span></label>`;

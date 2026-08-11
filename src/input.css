@@ -11,6 +11,25 @@ body.loaded {
   opacity: 1;
 }
 
+/* A nudge every three seconds, to catch the eye without taking up any room. */
+@keyframes shake {
+  0%, 84%, 100% { rotate: 0deg; }
+  87% { rotate: -9deg; }
+  91% { rotate: 9deg; }
+  95% { rotate: -6deg; }
+  98% { rotate: 4deg; }
+}
+
+.shake {
+  animation: shake 3s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shake {
+    animation: none;
+  }
+}
+
 /* Keeps text readable against arbitrary backdrop images. */
 .over-backdrop {
   text-shadow:

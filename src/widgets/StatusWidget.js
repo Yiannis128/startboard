@@ -20,8 +20,8 @@ const SPREAD = 'flex flex-row flex-wrap justify-center gap-2';
 // Written out per placement because Tailwind only emits classes it finds verbatim.
 const LAYOUTS = {
   top: { panel: `fixed top-4 left-4 right-4 z-30 ${SPREAD}` },
-  // Stops short of the right edge, where the settings and donate buttons live.
-  bottom: { panel: `fixed bottom-4 left-4 right-40 z-30 ${SPREAD}` },
+  // Stops short of the right edge, where the corner buttons live.
+  bottom: { panel: `fixed bottom-4 left-4 right-56 z-30 ${SPREAD}` },
   left: { panel: 'fixed top-4 left-4 z-30 flex flex-col items-start gap-2', dotFirst: true },
   right: { panel: 'fixed top-4 right-4 z-30 flex flex-col items-end gap-2' },
 };
