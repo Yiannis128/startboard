@@ -4,9 +4,8 @@ on:
   release:
     types: [created]
 
-# Publishing needs four repository secrets: CHROME_EXTENSION_ID,
-# CHROME_CLIENT_ID, CHROME_CLIENT_SECRET, CHROME_REFRESH_TOKEN.
-# See scripts/publish-webstore.sh.
+# Publishing needs two repository secrets: CHROME_EXTENSION_ID and
+# CHROME_SERVICE_ACCOUNT_KEY. See scripts/publish-webstore.sh.
 
 permissions:
   contents: read
@@ -79,7 +78,5 @@ jobs:
       - name: Publish to the Chrome Web Store
         env:
           CHROME_EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
-          CHROME_CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
-          CHROME_CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
-          CHROME_REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
+          CHROME_SERVICE_ACCOUNT_KEY: ${{ secrets.CHROME_SERVICE_ACCOUNT_KEY }}
         run: ./scripts/publish-webstore.sh startboard-extension.zip

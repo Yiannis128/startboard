@@ -228,11 +228,23 @@ The release body becomes the What's New page, so a release with no description
 fails the same job for the same reason — nobody wants the development
 placeholder shipped as the release notes.
 
-Publishing needs four repository secrets: `CHROME_EXTENSION_ID`,
-`CHROME_CLIENT_ID`, `CHROME_CLIENT_SECRET`, `CHROME_REFRESH_TOKEN`. It lives in
+Publishing needs two repository secrets: `CHROME_EXTENSION_ID` and
+`CHROME_SERVICE_ACCOUNT_KEY`, the service account key JSON. It lives in
 `scripts/publish-webstore.sh` so it gets shellcheck and can be run by hand after
 a failed release, and it inspects response bodies rather than status codes —
 both Web Store endpoints answer 200 with a failure payload.
+
+Authentication is a service account rather than a user refresh token, which is
+the other thing the Web Store API accepts. A refresh token expires after six
+months unused, and this project releases a few times a year, so the credential
+would usually be dead by the time a release needed it — and the failure arrives
+during the release, not before it. The service account is granted nothing in
+IAM; what authorizes it is its address being listed under Account in the Web
+Store dashboard. **A publisher can hold only one**, so that slot is spoken for.
+
+The script therefore signs its own JWT — base64url header and claims, RS256 via
+`openssl`, exchanged for an access token — because the key JSON is not a
+credential any endpoint takes directly.
 
 ## External dependencies
 
