@@ -66,6 +66,7 @@ Replace your new tab page with StartBoard:
 #### Widgets
 - **Welcome text** — Customizable greeting with multiple font styles
 - **Clock** — Four display styles (basic, digital, labelled, boxed) with 12/24-hour format
+- **What's New** — Release notes for each update, announced once and then out of the way
 
 ### Settings Sync
 

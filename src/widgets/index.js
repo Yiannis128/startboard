@@ -5,6 +5,7 @@ import { SearchWidget } from './SearchWidget.js';
 import { ShortcutsWidget } from './ShortcutsWidget.js';
 import { StatusWidget } from './StatusWidget.js';
 import { BackdropWidget } from './BackdropWidget.js';
+import { WhatsNewWidget } from './WhatsNewWidget.js';
 
 /**
  * The widget registry - the one place a widget has to be listed.
@@ -21,4 +22,6 @@ export const WIDGETS = [
   ShortcutsWidget,
   StatusWidget,
   BackdropWidget,
+  // Last, so its section is the one that meets the Configuration block.
+  WhatsNewWidget,
 ];

@@ -51,7 +51,7 @@ HTML. Widgets render themselves into a container the framework hands them.
 src/
   app.js       entry point: load config, mount widgets, wire the sidebar
   core/        Widget.js, fields.js, config.js, storage.js, migrations.js,
-               theme.js, url.js, notify.js, runtime.js
+               theme.js, url.js, notify.js, runtime.js, markdown.js, html.js
   widgets/     the widgets, plus index.js (the registry)
 ```
 
@@ -85,6 +85,12 @@ storage write and `chrome.storage.sync` caps writes at 120/minute.
 A widget that ticks calls `this.repeat(fn, ms)` instead of holding a timer: each
 call replaces the last, no arguments stops it, and `destroy()` clears it — so a
 widget that renders conditionally cannot stack tickers or leave one behind.
+
+A `<dialog>` that fills the screen pushes a history entry as it opens, so
+Android's back gesture closes it rather than leaving the PWA — see
+`WhatsNewWidget.open()`. Chrome closes a modal dialog on the gesture by itself
+and the entry is unwound on `close`; elsewhere the navigation arrives as
+`popstate` and closes the dialog. The small form dialogs do without it.
 
 ### Config and storage
 
@@ -138,6 +144,37 @@ that the refresh rate would gate nothing — a new-tab page lives for seconds, s
 every tab would re-probe everything. One `setInterval` covers the whole list,
 ticking every 15s and probing whatever is due.
 
+### Release notes
+
+`WhatsNewWidget` renders `src/whats-new.md`, which CI overwrites with the body of
+the GitHub release before building — see the release notes step in `build.yml`.
+The file committed here is a placeholder, and a build made from a working copy
+says so on the page rather than showing nothing. A master build takes the latest
+published release instead, because Pages deploys from master and would otherwise
+serve that placeholder to everyone.
+
+`whatsNew.seen` holds the identity of the notes that were read — the release CI
+stamped into them as `<!-- release: v0.1.2 -->`, or a digest of the file when
+nothing stamped one. **Not the app version**, which is a different thing: Pages
+deploys from master, so the PWA usually ships an earlier release's notes than
+the version around them, and keying this on `Runtime.getVersion()` would mark
+the next release's notes read before they existed. `seen` is synced, so it would
+do that on every machine at once.
+
+The widget therefore has to read the notes to know whether to advertise them,
+which it does un-awaited from `mount()`, and skips entirely when the button is
+turned off. Rendering waits for the dialog to open.
+
+`core/markdown.js` renders the subset of Markdown a release body uses. Its output
+goes into `innerHTML`, so it emits no markup that came from the source: text is
+escaped and targets go through `safeUrl()`. The notes travel from a GitHub
+release through CI into the build, and none of that is this project's own text.
+Comments are dropped, which is what keeps the release stamp off the page.
+
+Tests get the committed placeholder served for them — see `ASSETS` in
+`test/harness.mjs` — so a widget fetching a shipped file does not turn up in
+another test's fetch stub.
+
 ## Styling
 
 Tailwind v4 with DaisyUI, configured CSS-first in `src/input.css`. There is no
@@ -147,6 +184,12 @@ this project does not. `src/output.css` is generated and gitignored.
 Tailwind only emits classes it finds verbatim, so a templated class name
 produces nothing. Write the variants out in full — see `ACCENTS` in
 `core/fields.js` and `LAYOUTS` in `widgets/StatusWidget.js`.
+
+The bottom-right corner is a ladder of fixed buttons 4rem apart: settings at
+`right-4` and donate at `right-20` in `index.html`, What's New at `right-36` in
+its widget. `StatusWidget`'s `bottom` placement reserves `right-56` to clear all
+three. A fourth button means extending both ends of that, which is the one piece
+of layout no single file owns — put it in a flex row if it grows again.
 
 ## Builds
 
@@ -180,6 +223,10 @@ resolved before the repository is on disk.
 the two cannot drift. Bump both, commit, then create a release tagged
 `v<version>`; a mismatched tag fails the release instead of shipping a
 mislabelled extension.
+
+The release body becomes the What's New page, so a release with no description
+fails the same job for the same reason — nobody wants the development
+placeholder shipped as the release notes.
 
 Publishing needs four repository secrets: `CHROME_EXTENSION_ID`,
 `CHROME_CLIENT_ID`, `CHROME_CLIENT_SECRET`, `CHROME_REFRESH_TOKEN`. It lives in

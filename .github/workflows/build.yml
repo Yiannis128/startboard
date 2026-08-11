@@ -7,6 +7,15 @@ on:
   pull_request:
   # Callable so the release builds and tests exactly what CI does.
   workflow_call:
+    inputs:
+      release-notes:
+        description: The release body to ship as the What's New page.
+        type: string
+        required: false
+      release-tag:
+        description: The tag those notes belong to, stamped into the page.
+        type: string
+        required: false
 
 permissions:
   contents: read
@@ -31,6 +40,39 @@ jobs:
 
       - name: Set up Bun
         uses: ./.github/actions/setup
+
+      # The What's New page ships the notes of the release the build belongs to:
+      # its own for a release, the latest published one for master, so what Pages
+      # deploys is not the development placeholder. A pull request keeps that
+      # placeholder, which is what it is there to show.
+      - name: Write the release notes into the build
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOTES: ${{ inputs.release-notes }}
+          TAG: ${{ inputs.release-tag }}
+        run: |
+          # The path WhatsNewWidget fetches. Nothing else ties the two together,
+          # and a stray file here would ship the placeholder to everyone.
+          [ -f src/whats-new.md ] || {
+            echo "::error::src/whats-new.md is gone - update this step to match the widget."
+            exit 1
+          }
+          if [ -z "$NOTES" ]; then
+            NOTES=$(gh release view --json body --jq .body 2>/dev/null) || NOTES=''
+            TAG=$(gh release view --json tagName --jq .tagName 2>/dev/null) || TAG=''
+          fi
+          if [ -n "$NOTES" ]; then
+            # The stamp is what the widget tracks as read, so notes that outlive
+            # a version bump do not mark the next release's notes read with it.
+            {
+              if [ -n "$TAG" ]; then printf '<!-- release: %s -->\n\n' "$TAG"; fi
+              printf '%s\n' "$NOTES"
+            } > src/whats-new.md
+            echo "Shipping the notes for ${TAG:-an unnamed release}."
+          else
+            echo "::warning::No release notes found - shipping the placeholder."
+          fi
 
       # Both targets, so a PR cannot break the extension build without failing.
       - name: Build extension and PWA
