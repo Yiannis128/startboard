@@ -210,13 +210,28 @@ would shadow the widget's own weekly cache and make "Refresh Bangs" a no-op.
 ## CI and releases
 
 `build.yml` builds both targets and runs the suite on pull requests, master, and
-via `workflow_call`; a master push also deploys `dist/pwa` to Pages from a
-separate job, so its `pages` concurrency group can decline to cancel a
-deployment already going out. `release.yml` checks the tag against the manifest,
-calls `build.yml`, attaches the zip to the release, then publishes to the Chrome
-Web Store. Shared setup is the composite action in `.github/actions/setup`;
-checkout itself has to stay in each caller, since a local action cannot be
-resolved before the repository is on disk.
+via `workflow_call`; anything that is not a pull request also deploys `dist/pwa`
+to Pages from a separate job, so its `pages` concurrency group can decline to
+cancel a deployment already going out. `release.yml` checks the tag against the
+manifest, calls `build.yml`, attaches the zip to the release, then publishes to
+the Chrome Web Store. Shared setup is the composite action in
+`.github/actions/setup`; checkout itself has to stay in each caller, since a
+local action cannot be resolved before the repository is on disk.
+
+A release deploys Pages as well as a master push, because the release build is
+the only one holding that release's notes — leaving it out would serve the
+previous ones until somebody happened to push again. Two things make that work
+and neither is visible in the workflow file. The `github-pages` environment
+restricts deployments by ref, so the tag pattern `v*` is allowed alongside
+`master`; without it the release runs at a tag the environment refuses, the
+called workflow fails, and `publish` never runs. And a called workflow gets no
+more permission than its caller grants, so `release.yml` names `pages: write`
+and `id-token: write` on the job that calls `build.yml`.
+
+The cost of routing the deploy through the called workflow is that a Pages
+failure blocks the Web Store publish. That is what
+`scripts/publish-webstore.sh` being a standalone script is for — run it by hand
+against the zip attached to the release.
 
 `manifest.json` is the version source of truth and `readVersion` in
 `scripts/lib.js` is its only reader — it fails when `package.json` disagrees, so

@@ -93,19 +93,22 @@ jobs:
           compression-level: 0
 
       - name: Set up Pages
-        if: github.event_name == 'push'
+        if: github.event_name != 'pull_request'
         uses: actions/configure-pages@v6
 
       - name: Upload the PWA for Pages
-        if: github.event_name == 'push'
+        if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v5
         with:
           path: ./dist/pwa
 
-  # Master only, and after the suite: Pages gets the build the tests passed,
-  # rather than a second build racing alongside them.
+  # After the suite, so Pages gets the build the tests passed rather than a
+  # second build racing alongside them. A release deploys as well as a master
+  # push: the release build is the only one holding that release's notes, and
+  # skipping it would leave Pages serving the previous ones until someone
+  # happened to push again.
   deploy:
-    if: github.event_name == 'push'
+    if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 10
