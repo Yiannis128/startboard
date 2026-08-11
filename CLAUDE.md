@@ -210,13 +210,27 @@ would shadow the widget's own weekly cache and make "Refresh Bangs" a no-op.
 ## CI and releases
 
 `build.yml` builds both targets and runs the suite on pull requests, master, and
-via `workflow_call`; a master push also deploys `dist/pwa` to Pages from a
-separate job, so its `pages` concurrency group can decline to cancel a
-deployment already going out. `release.yml` checks the tag against the manifest,
-calls `build.yml`, attaches the zip to the release, then publishes to the Chrome
-Web Store. Shared setup is the composite action in `.github/actions/setup`;
-checkout itself has to stay in each caller, since a local action cannot be
-resolved before the repository is on disk.
+via `workflow_call`; anything that is not a pull request also deploys `dist/pwa`
+to Pages from a separate job, so its `pages` concurrency group can decline to
+cancel a deployment already going out. `release.yml` checks the tag against the
+manifest, calls `build.yml`, attaches the zip to the release, then publishes to
+the Chrome Web Store. Shared setup is the composite action in
+`.github/actions/setup`; checkout itself has to stay in each caller, since a
+local action cannot be resolved before the repository is on disk.
+
+A release deploys Pages as well as a master push, because the release build is
+the only one holding that release's notes — leaving it out would serve the
+previous ones until somebody happened to push again. What makes that work is
+not in the workflow file: the `github-pages` environment restricts deployments
+by ref, so the tag pattern `v*` is allowed there alongside `master`. Without it
+the release runs at a tag the environment refuses, the called workflow fails,
+and `publish` never runs.
+
+Routing the deploy through the called workflow coupled the two: a Pages failure
+blocks the Web Store publish, and `publish` is also what attaches the zip, so
+the release will not have one to fall back to. Recovery is the `extension`
+artifact from the failed run, and `scripts/publish-webstore.sh` by hand against
+that.
 
 `manifest.json` is the version source of truth and `readVersion` in
 `scripts/lib.js` is its only reader — it fails when `package.json` disagrees, so
@@ -228,11 +242,19 @@ The release body becomes the What's New page, so a release with no description
 fails the same job for the same reason — nobody wants the development
 placeholder shipped as the release notes.
 
-Publishing needs four repository secrets: `CHROME_EXTENSION_ID`,
-`CHROME_CLIENT_ID`, `CHROME_CLIENT_SECRET`, `CHROME_REFRESH_TOKEN`. It lives in
+Publishing needs two repository secrets: `CHROME_EXTENSION_ID` and
+`CHROME_SERVICE_ACCOUNT_KEY`, the service account key JSON. It lives in
 `scripts/publish-webstore.sh` so it gets shellcheck and can be run by hand after
 a failed release, and it inspects response bodies rather than status codes —
 both Web Store endpoints answer 200 with a failure payload.
+
+Authentication is a service account rather than a user refresh token, which is
+the other thing the Web Store API accepts. A refresh token expires after six
+months unused, and this project releases a few times a year, so the credential
+would usually be dead by the time a release needed it — and the failure arrives
+during the release, not before it. What authorizes the account is in the script
+header; it signs its own JWT because the key JSON is not a credential any
+endpoint takes directly.
 
 ## External dependencies
 

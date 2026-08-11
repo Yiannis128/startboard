@@ -4,17 +4,16 @@ on:
   release:
     types: [created]
 
-# Publishing needs four repository secrets: CHROME_EXTENSION_ID,
-# CHROME_CLIENT_ID, CHROME_CLIENT_SECRET, CHROME_REFRESH_TOKEN.
-# See scripts/publish-webstore.sh.
+# Publishing needs two repository secrets: CHROME_EXTENSION_ID and
+# CHROME_SERVICE_ACCOUNT_KEY. See scripts/publish-webstore.sh.
 
 permissions:
   contents: read
 
 jobs:
   # A release tagged v0.2.0 built from a manifest still saying 0.1.1 would
-  # publish a mislabelled extension, so refuse rather than guess. Runs beside
-  # the build, not after it, so the mistake costs seconds instead of a full run.
+  # publish a mislabelled extension, so refuse rather than guess. Cheap enough
+  # to gate the build on: checkout and a dependency-free node script.
   verify-release:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -47,15 +46,27 @@ jobs:
             exit 1
           fi
 
-  # Builds and tests, so a release cannot ship code the suite rejects.
+  # Builds and tests, so a release cannot ship code the suite rejects. This is
+  # also the build that deploys Pages, since it is the only one holding this
+  # release's notes - hence the Pages permissions, which a called workflow can
+  # only be granted by its caller.
+  #
+  # Waits on verify-release rather than running beside it: a tag that does not
+  # match the manifest should not reach Pages, and a mismatch caught here costs
+  # nothing instead of a wasted build.
   build:
+    needs: verify-release
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     uses: ./.github/workflows/build.yml
     with:
       release-notes: ${{ github.event.release.body }}
       release-tag: ${{ github.event.release.tag_name }}
 
   publish:
-    needs: [build, verify-release]
+    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -79,7 +90,5 @@ jobs:
       - name: Publish to the Chrome Web Store
         env:
           CHROME_EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
-          CHROME_CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
-          CHROME_CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
-          CHROME_REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
+          CHROME_SERVICE_ACCOUNT_KEY: ${{ secrets.CHROME_SERVICE_ACCOUNT_KEY }}
         run: ./scripts/publish-webstore.sh startboard-extension.zip
